@@ -6,6 +6,8 @@ Mooncake 采用了一种以 KVCache 为中心的分布式架构，旨在解决�
 
 如架构图所示，Mooncake 的整体系统主要由四个核心部分组成：全局调度器（Conductor）、Prefill 资源池、Decoding 资源池以及分布式存储与传输引擎（Mooncake Store & Transfer Engine）。
 
+![1.png](.\1.png)
+
 ### 1.1.1 Prefill/Decode 资源池
 
 PD分离设计允许针对两个阶段不同的计算和内存特征进行独立的资源分配和调度优化。
@@ -57,6 +59,8 @@ Conductor根据全局视角下发调度指令，不直接参与数据搬运。�
 ## 3.1 拓扑感知
 
 在大规模 GPU 集群中，RDMA 传输性能高度依赖于数据路径是否经过 PCIe Switch 跨桥、NUMA 跨节点访问。一次跨 NUMA 的 RDMA 传输延迟远高于同 NUMA 内的传输延迟。因此，Transfer Engine 必须在初始化阶段构建完整的硬件拓扑地图，以便后续传输时选择最优的 RDMA 网卡。
+
+![2.png](.\2.png)
 
 拓扑发现流程：每个服务器扫描底层硬件拓扑（NUMA 节点、PCIe 总线），构建计算设备与 RDMA 网卡的亲和性矩阵。
 
@@ -220,20 +224,21 @@ const bool hard_pinned{false};          // Hard Pin
 ### 4.3.1 Lease（租约）：短期保护
 
 - 作用：防止对象在读取时被删除/驱逐
+  
   - 当 Client 调用 GetReplicaList（查询对象位置）时，Master 会自动为该对象续期 Lease。
     
     ```cpp
         auto MasterService::GetReplicaList(const std::string& key) {
             // ... 查找元数据 ...
-            
+    
             // 核心动作：授予租约和软锁
             // default_kv_lease_ttl_: 租约时长（如 10s）
             // default_kv_soft_pin_ttl_: 软锁时长（如 5min）
             metadata.GrantLease(default_kv_lease_ttl_, default_kv_soft_pin_ttl_);
-            
+    
             return GetReplicaListResponse(...);
         }
-
+    
         // mooncake-store/include/master_service.h:757-768
         void GrantLease(const uint64_t ttl, const uint64_t soft_ttl) const {
             SpinLocker locker(&lock); // 多个客户端可能同时访问同一个对象，且GrantLease 可能与驱逐线程并发执行
@@ -245,22 +250,30 @@ const bool hard_pinned{false};          // Hard Pin
             }
         }
     ```
+  
   - 每个 ObjectMetadata 都有一个 lease_timeout 时间戳。
+  
   - 每次续期会将 lease_timeout 更新为 当前时间 + TTL。
+  
   - 在 BatchEvict（批量驱逐）时，如果 lease_timeout 还没过期，该对象绝对不会被驱逐。
 
 ### 4.3.2 Pin（锁定）：中长期保护
 
 Pin 分为两种：Soft Pin（软锁定） 和 Hard Pin（硬锁定）。
+
 #### Soft Pin（软锁定）：中期保护
+
 - 作用：保护热点数据。刚刚被读取的对象在未来短时间内被再次读取的概率很高（时间局部性），Soft Pin 防止它们被立即驱逐，提高缓存命中率。
 
 - 触发时机：
+  
   - 与 Lease 同时触发。在 GrantLease 时，除了设置 lease_timeout，还会设置 soft_pin_timeout。
   - Soft Pin 的 TTL 通常比 Lease 长（例如 Lease 是 10s，Soft Pin 是 5min）。
 
 - 实现机制：
+  
   - ObjectMetadata 中有 soft_pin_timeout 字段。
+  
   - 驱逐优先级低：在 BatchEvict 中，Master 会优先驱逐没有 Soft Pin 的对象。只有当内存极度紧张（第一阶段驱逐不够）且配置允许时，才会驱逐 Soft Pin 对象。
   
   - 代码位置：master_service.cpp:3580 (BatchEvict 第二阶段)
@@ -273,11 +286,15 @@ Pin 分为两种：Soft Pin（软锁定） 和 Hard Pin（硬锁定）。
     ```
 
 #### Hard Pin（硬锁定）：永久保护
+
 - 作用：保护关键数据（如模型权重、系统配置等），无论内存多紧张，都不会被驱逐。
 
 - 触发时机：
+  
   - 在对象创建时（PutStart）通过配置指定。
+
 - 实现机制：
+  
   - ObjectMetadata 中有一个 const bool hard_pinned{false} 字段。
   - 在 BatchEvict 中，一旦检测到 IsHardPinned() 为 true，直接跳过该对象，绝不驱逐。
 
@@ -291,8 +308,6 @@ bool IsSoftPinned() const {
 
 bool IsHardPinned() const { return hard_pinned; }
 ```
-
-
 
 ## 4.3 分层存储与驱逐策略
 
@@ -463,4 +478,3 @@ graph TD
     M --> O["执行驱逐，释放内存"]
     N --> O
 ```
-
