@@ -1,9 +1,3 @@
- 
-
-
-
-
-
 ## Mooncake Layerwise Connector KV Cache 传输机制分析
 
 ### 一、P 端发送机制 (`KVCacheSendingLayerThread`)
@@ -89,7 +83,7 @@ def send_done_send_signal(self, req_id, req_meta, group_idx):
 
 ### 二、D 端接收机制 (`KVCacheRecvingLayerThread`)
 
-**D 端通过统计收到的 `DONE_SENDING_MSG` 信号数量，当数量等于预期的发送源数量（`trans_count`）时，判定该请求的所有层数据已接收完毕，随后将请求 ID 加入完成队列供 vLLM 调度器消费。**
+**D 端通过统计收到的 `DONE_SENDING_MSG` 信号数量，当数量等于预期的发送源数量（`trans_count`）时，判定该请求的所有数据已接收完毕，随后将请求 ID 加入完成队列供 vLLM 调度器消费。**
 
 #### 1. 侧信道监听循环 - `run` (第553-590行)
 
@@ -122,8 +116,6 @@ D端的处理信号只有两个：
 | ------------------ | ------------ | ------- | -------------------- |
 | `DONE_SENDING_MSG` | **每个请求 1 次** | 最后一层传输后 | P 端通知 D 端可以开始 Decode |
 
-
-
 #### 2. 任务完成追踪 - `update_task` (第544-551行)
 
 ```python
@@ -154,8 +146,6 @@ def get_and_clear_finished_requests(self) -> set[str]:
         self.done_requests = set()  # 清空
     return finished_requests
 ```
-
-
 
 ### 4. 暴露给 vLLM 调度器：`get_finished`
 
@@ -206,7 +196,3 @@ vLLM Scheduler 轮询
   ↓ 将请求移入 running 队列
   ↓ ★ 触发 NPU 执行 Decode Forward 计算
 ```
-
-
-
-
