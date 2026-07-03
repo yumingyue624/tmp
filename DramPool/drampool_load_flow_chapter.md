@@ -1,6 +1,6 @@
 # DramPool LOAD 流程设计
 
-本章节基于时序图 `drampool_single_thread_load_sequence_v4.excalidraw`，描述 LOAD 请求在 DramPool 内部的处理流程、锁边界以及与 DUMP 流程的差异。
+本章节基于时序图 `drampool_single_thread_load_sequence_v5.excalidraw`，描述 LOAD 请求在 DramPool 内部的处理流程、锁边界以及与 DUMP 流程的差异。
 
 ## 组件职责
 
@@ -10,11 +10,12 @@
 - `TaskFlow`：单线程任务处理逻辑，负责执行 LOAD task。
 - `MetadataIndex`：查询 `Entry` 和三套索引，校验 entry 是否存在、是否 `READY`、TTL 是否有效。
 - `TransportMgr`：按顺序提交单边写 value 和单边写 flagbuffer。
+- `CompletionPoller`：轮询 LOAD 的 async handle，在 RDMA write 结束后释放本次 LOAD 对 entry 的 pin。
 
 LOAD 与 DUMP 的差异很明确：
 
 - LOAD 不分配 DramPool 本地内存，所以 `BufferMgr` 不参与主路径。
-- LOAD 不改变 entry 的发布状态，所以 `CompletionPoller` 不参与当前主路径。
+- LOAD 不改变 entry 的发布状态，但如果 value write 是异步提交，仍然需要 `CompletionPoller` 在完成后执行 `Unpin`。
 - LOAD 只读取已经 `READY` 的 entry。`RESERVED` entry 代表 DUMP 还没完成，不能被 LOAD 命中。
 
 ## LOAD 主流程
@@ -46,19 +47,34 @@ TaskFlow:
   dequeue LoadTaskContext
 
 TaskFlow -> MetadataIndex:
-  lookup key
+  LookupAndPin key
   校验 Entry state == READY
   校验 expire_at_ms > now_ms
-  返回 local addr / len / status
+  io_refcnt++
+  返回 local addr / len / generation / status
 
 TaskFlow -> TransportMgr:
-  提交单边写 value 到 DramStore
+  提交单边写 value 到 DramStore，获取 data handle
 
 TaskFlow -> TransportMgr:
   提交单边写 flagbuffer
+
+TaskFlow -> CompletionPoller:
+  Register InflightRecord(op=LOAD, key, generation, data_handle)
 ```
 
 DramStore 侧看到 flagbuffer 后，认为本次 LOAD 请求完成。TransportMgr 必须保证 value write 在 flagbuffer write 之前提交到同一个有序域，不能让 DramStore 先看到完成 flag 再收到 value。
+
+`CompletionPoller` 轮询的是 value write 对应的 data handle。LOAD completion 不发布新数据，只表示这次 RDMA write 已经不再使用 entry 的本地 buffer，因此可以释放本次 pin：
+
+```text
+SUCCESS / FAILED:
+  MetadataIndex.Unpin(key, generation)
+
+TIMEOUT:
+  不能直接 Unpin
+  必须等 TransportMgr 给出 terminal 或 abort guarantee
+```
 
 ## 命中与未命中
 
@@ -106,10 +122,10 @@ struct LoadLookupResult {
     uint64_t generation;
 };
 
-LoadLookupResult MetadataIndex::LookupForLoad(const Key& key, uint64_t now_ms);
+LoadLookupResult MetadataIndex::LookupAndPinForLoad(const Key& key, uint64_t now_ms);
 ```
 
-`LookupForLoad` 内部持有对应 shard 的锁，完成以下逻辑：
+`LookupAndPinForLoad` 内部持有对应 shard 的锁，完成以下逻辑：
 
 ```text
 1. 查 primary_index
@@ -117,18 +133,20 @@ LoadLookupResult MetadataIndex::LookupForLoad(const Key& key, uint64_t now_ms);
 3. 校验 expire_at_ms
 4. 读取 local addr / len / generation
 5. 更新 last_access_ms
-6. 返回 LoadLookupResult
+6. io_refcnt++
+7. 返回 LoadLookupResult
 ```
 
 `last_access_ms` 只是访问时间统计，可用于后续淘汰策略或调试观测。更新它不能隐式延长 TTL，也就是说 LOAD 命中后不能自动修改 `expire_at_ms`。如果后续协议明确支持 refresh，再单独增加 refresh 语义。
 
-第一版可以在 `LookupForLoad` 内直接持有 shard 写锁，因为更新 `last_access_ms` 需要写 entry：
+第一版可以在 `LookupAndPinForLoad` 内直接持有 shard 写锁，因为更新 `last_access_ms` 和 `io_refcnt` 都需要写 entry：
 
 ```text
 unique_lock(shard.mu)
   find entry
   validate READY / TTL
   update last_access_ms
+  io_refcnt++
   copy addr / len / generation
 unlock
 ```
@@ -137,27 +155,28 @@ unlock
 
 ## Entry 生命周期约束
 
-LOAD 主路径不通过 CompletionPoller 改 entry 状态，但它仍然会把 entry 的本地 buffer 地址交给 TransportMgr 做单边写。这里有一个关键约束：
+LOAD 主路径不会通过 CompletionPoller 改 entry 状态，但它会把 entry 的本地 buffer 地址交给 TransportMgr 做单边写。这里有一个关键约束：
 
 ```text
 只要 value write 可能还在使用 entry->buffer，
 GC 就不能释放或复用这个 buffer。
 ```
 
-因此实现时需要二选一：
+因此异步 LOAD 的基本生命周期是：
 
 ```text
-方案 A:
-  TransportMgr 的 LOAD value write 接口在返回前已经保证本次写完成。
-  TaskFlow 返回后，GC 可以正常淘汰未被锁保护的 READY entry。
+LookupAndPin:
+  READY / not expired / io_refcnt++
 
-方案 B:
-  TransportMgr 的 LOAD value write 是真正异步提交。
-  MetadataIndex 需要在提交前 pin entry，例如 io_refcnt++。
-  写完成后再 unpin，例如 io_refcnt--。
+Submit value write:
+  使用 entry->buffer 作为本地源地址
+
+CompletionPoller:
+  QueryStatus(data_handle)
+  terminal 后 Unpin，io_refcnt--
 ```
 
-当前时序图采用的是“CompletionPoller 不参与 LOAD”的主路径，因此更适合方案 A，或者由 TransportMgr 在 LOAD 接口内部完成同步等待。否则如果 LOAD 也是纯异步 submit，必须补充一个 LOAD completion 释放 pin 的路径；这个路径不一定要改变 entry 状态，但必须解决 GC 与在飞 RDMA 的 buffer 生命周期问题。
+LOAD 的 completion 和 DUMP 的 completion 语义不同。DUMP completion 成功后发布新数据，即 `RESERVED -> READY`；LOAD completion 只释放本次 LOAD pin，不发布新数据，Entry 仍保持 `READY`。
 
 推荐 `Entry` 保留一个轻量引用计数，给 GC 和后续异步 LOAD 扩展使用：
 
@@ -175,10 +194,63 @@ struct Entry {
 };
 ```
 
-当前如果采用方案 A，`io_refcnt` 可以暂时不走复杂 completion 流程，但 GC 淘汰逻辑需要预留判断：
+GC 淘汰逻辑需要检查：
 
 ```text
 只淘汰 state == READY 且 io_refcnt == 0 的 entry
+```
+
+如果 `TransportMgr` 的 LOAD value write 接口以后改成同步完成语义，即函数返回时已经保证 RDMA write 不再访问 entry buffer，那么 LOAD 可以不注册 CompletionPoller。但当前异步提交模型下，需要通过 CompletionPoller 释放 pin。
+
+## CompletionPoller 组织方案
+
+DUMP 和 LOAD 都可能产生 async handle，但 completion 后的本地动作不同：
+
+```text
+DUMP SUCCESS:
+  RESERVED -> READY
+
+LOAD SUCCESS / FAILED:
+  io_refcnt--
+  Entry 保持 READY
+```
+
+队列和线程组织有三种可选方案：
+
+| 方案 | 结构 | 优点 | 缺点 | 适用场景 |
+|---|---|---|---|---|
+| 一个 CompletionPoller + 一个合并队列 | `DUMP` 和 `LOAD` 的 `InflightRecord` 放进同一个 `pending_queue`，通过 `op_type` 区分处理逻辑 | 实现最简单；线程少；队列锁简单；TransportMgr 查询路径统一；MetadataIndex 并发压力最低 | LOAD 很多时可能拖慢 DUMP 的 `RESERVED -> READY`；DUMP/LOAD timeout 策略要靠 `op_type` 分支区分 | 第一版实现；单 CPU 或少量 CPU；当前 TaskFlow 也是单线程 |
+| 一个 CompletionPoller + 两个队列 | 一个线程同时轮询 `dump_pending_queue` 和 `load_pending_queue`，可设置调度比例 | DUMP/LOAD 队列隔离；可以优先处理 DUMP，降低 READY 发布延迟；仍然只有一个 Poller 线程 | 调度策略更复杂；如果偏向 DUMP，LOAD 的 `refcnt--` 可能变慢；如果偏向 LOAD，DUMP 发布仍会慢 | LOAD QPS 较高，且 DUMP READY 延迟敏感 |
+| 两个 CompletionPoller + 两个队列 | `DumpCompletionPoller` 处理 DUMP，`LoadCompletionPoller` 处理 LOAD | DUMP/LOAD 完全隔离；LOAD 很多不会影响 DUMP READY；多 CPU 下可能并行 poll | 线程和生命周期管理复杂；MetadataIndex 锁竞争更强；TransportMgr `QueryStatus` 必须支持多线程；单 CPU 下基本没收益 | 多 CPU、多个 CQ/完成域、明确测出一个 Poller 成瓶颈 |
+
+第一版建议采用一个合并队列：
+
+```cpp
+enum class InflightOpType {
+    DUMP,
+    LOAD,
+};
+
+struct InflightRecord {
+    InflightOpType op_type;
+    Key key;
+    uint64_t generation;
+    TransportHandle handle;
+    uint64_t submit_ms;
+};
+```
+
+`CompletionPoller` 根据 `op_type` 分发到不同处理函数：
+
+```cpp
+switch (record.op_type) {
+case InflightOpType::DUMP:
+    ApplyDumpCompletion(record, status);
+    break;
+case InflightOpType::LOAD:
+    ApplyLoadCompletion(record, status);
+    break;
+}
 ```
 
 ## Transport 顺序语义
@@ -211,7 +283,7 @@ GC 淘汰一个 entry 的基本流程应是：
 5. 释放或隔离 buffer
 ```
 
-LOAD 查询 entry 时，不能在未受保护的情况下长期持有裸指针。如果 LOAD 的 TransportMgr 调用不是同步完成，就必须在锁内 pin entry，释放锁后再提交 RDMA，完成后 unpin。
+LOAD 查询 entry 时，不能在未受保护的情况下长期持有裸指针。当前异步 LOAD 设计要求在锁内 pin entry，释放锁后再提交 RDMA，completion 后由 `CompletionPoller` unpin。
 
 ## 失败处理
 
@@ -228,12 +300,14 @@ entry expired:
   是否立即删除过期 entry 交给 GC 或后续 cleanup 路径
 
 value write submit failed:
+  如果没有产生 in-flight handle，立即 Unpin
   不提交成功 flag
   写失败 status 或返回 Transport error
 
 flagbuffer write failed:
   记录错误
   DramStore 侧可能按请求超时处理
+  value handle 如果已经提交，仍然需要 CompletionPoller 后续 Unpin
 ```
 
 LOAD 命中后更新 `last_access_ms` 是允许的，但不能更新 `expire_at_ms`。过期时间只由写入时的 TTL 或后续明确的 refresh 协议决定。
@@ -246,5 +320,4 @@ LOAD 的可见性规则可以简化为：
 只有 READY 且未过期的 Entry 可以被 LOAD 命中。
 ```
 
-`RESERVED` entry 对 LOAD 不可见。DUMP 的完成发布由 CompletionPoller 完成；LOAD 本身不发布新数据，也不改变 `RESERVED -> READY` 状态。
-
+`RESERVED` entry 对 LOAD 不可见。DUMP 的完成发布由 CompletionPoller 完成；LOAD 的 CompletionPoller 路径只释放 pin，不发布新数据，也不改变 `RESERVED -> READY` 状态。
