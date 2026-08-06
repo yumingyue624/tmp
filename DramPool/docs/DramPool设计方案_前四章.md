@@ -27,7 +27,7 @@ DramPool 中保存的是按固定 Block Size 组织的 KVCache Block。DramStore
 
 [Excalidraw 源文件](./02_internal_architecture_v1.excalidraw)
 
-#### 1.3.1 进程管理模块
+#### 1.3.1 DramPoolDaemon 进程管理模块
 
 进程管理模块负责把各业务模块组装成可启动、可停止的独立服务，并保证初始化失败或收到退出信号时按照依赖关系释放资源。它不处理具体 Dump、Load、Lookup 语义。
 
@@ -39,19 +39,19 @@ DramPool 中保存的是按固定 Block Size 组织的 KVCache Block。DramStore
 
 `DramPoolDaemon::Run()` 先完成命令行和 YAML 配置解析，再调用 `DramPoolServer::Init()` 与 `DramPoolServer::Start()`。核心服务启动成功后才启动 `HealthServer`；收到 `SIGINT` 或 `SIGTERM` 后，先停止健康检查，再停止 DramPool 核心服务。
 
-#### 1.3.2 请求接入模块
+#### 1.3.2 RequestReceiveLoop 请求接入模块
 
 请求接入模块负责把 DramStore 发来的控制报文转换为进程内部可执行的 `RequestTask`。其边界止于 `requestQueue_`：接入线程不分配 KVCache Buffer，也不等待数据传输完成。
 
 | 组件 | 作用 |
 | --- | --- |
-| `TcpMessageChannel` | 接收携带 KV 协议报文的 `transport::Metadata`；本文不展开其内部实现 |
+| `TcpMessageChannel` | 接收携带 KV 协议报文的 `transport::Metadata`； |
 | `ProtocolManager` | 根据 `KvOpcode` 选择协议实现，完成请求解包和响应编码 |
 | `DramPoolServer::RequestReceiveLoop()` | 接收报文、解析请求、完成 Peer 地址映射并写入 `requestQueue_` |
 
-`RequestReceiveLoop()` 会用 `controlPeer.ToString()` 查询 `g_config.twoSidedToOneSided`。只有配置中存在对应 `two_sided` 地址的 Peer 才能生成 `RequestTask`；未配置的 Peer 会被记录并拒绝，不进入任务队列。
+`RequestReceiveLoop()` 会查询 `g_config.twoSidedToOneSided`。只有配置中存在对应 `two_sided` 地址的 Peer 才能生成 `RequestTask`；未配置的 Peer 会被记录并拒绝，不进入任务队列。
 
-#### 1.3.3 请求执行模块
+#### 1.3.3 TaskWorker CompletionPoller 请求执行模块
 
 请求执行模块将一次请求拆成“业务提交”和“异步完成”两个阶段。`TaskWorker` 负责生成可执行的数据传输，`CompletionPoller` 负责等待 Transport 终态、收尾元数据并回写最终结果。
 
@@ -62,7 +62,7 @@ DramPool 中保存的是按固定 Block Size 组织的 KVCache Block。DramStore
 
 两个线程之间使用 `completionQueue_` 传递 `CompletionRecord`。这样 `TaskWorker` 不需要阻塞等待 RDMA/HIXL 操作完成，可以继续处理后续请求；具体线程和队列关系在第 4 章展开。
 
-#### 1.3.4 数据与元数据管理模块
+#### 1.3.4 MetaDataManager 数据与元数据管理模块
 
 数据与元数据管理模块负责一个 `BlockId` 从写入占位、数据发布、加载引用到最终删除的完整生命周期。`BufferManager` 作为 `MetadataManager` 的资源子模块存在：元数据创建时分配 KVCache Slot，元数据删除或淘汰时同步释放 Slot。
 
@@ -77,7 +77,7 @@ DramPool 中保存的是按固定 Block Size 组织的 KVCache Block。DramStore
 
 `MetadataManager` 是业务模块访问 KVCache 数据资源的统一入口。`TaskWorker` 和 `CompletionPoller` 不直接释放数据 Slot，而是通过 `MetadataManager::Delete()` 等操作保持主索引和 Buffer 生命周期一致。
 
-#### 1.3.5 数据传输模块
+#### 1.3.5 TransportManager 数据传输模块
 
 数据传输模块负责控制请求之外的实际数据搬运。DramPool 将 `TransportManager` 和 HIXL Transport 视为传输能力，对其内部队列和设备实现不作二次封装。
 
