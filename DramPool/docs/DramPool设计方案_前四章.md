@@ -79,7 +79,7 @@ DramPool 中保存的是按固定 Block Size 组织的 KVCache Block。DramStore
 
 #### 1.3.5 TransportManager 数据传输模块
 
-数据传输模块负责控制请求之外的实际数据搬运。DramPool 将 `TransportManager` 和 HIXL Transport 视为传输能力，对其内部队列和设备实现不作二次封装。
+数据传输模块负责控制请求之外的实际单边数据搬运。
 
 | 场景 | `transport::Operation` |
 | --- | --- |
@@ -89,20 +89,7 @@ DramPool 中保存的是按固定 Block Size 组织的 KVCache Block。DramStore
 
 每个 Operation 都设置 `target_manager`，其值来自请求控制面 Peer 对应的 `peer_one_sided_id`。DramPool 使用 `ExecuteAsync()` 获取 `TransferHandle`，后续由 `CompletionPoller` 调用 `GetStatus()` 推进任务。
 
-### 1.4 核心数据通路
-
-![请求接收执行与完成回写的数据通路](./03_core_data_path_v1.svg)
-
-[Excalidraw 源文件](./03_core_data_path_v1.excalidraw)
-
-请求通路可以分成四段：
-
-1. `DramPoolServer::RequestReceiveLoop()` 从 `TcpMessageChannel` 收到协议报文，经 `ProtocolManager` 解包后生成 `RequestTaskPtr`。
-2. `TaskWorker` 从 `requestQueue_` 取出请求，操作 `MetadataManager`，并向 `TransportManager` 提交异步数据传输。
-3. `TaskWorker` 将 Transfer Handle、逐项结果和响应上下文封装为 `CompletionRecord`，写入 `completionQueue_`。
-4. `CompletionPoller` 等待数据传输终态，收尾元数据，从 `flagBufferPool_` 分配本地响应 Slot，并通过 `TransportManager` 将响应写回 DramStore。
-
-### 1.5 GC 数据回收通路
+### 1.4 GC 数据回收通路
 
 GC 不经过请求队列，它由 `DramPoolServer::GCThreadLoop()` 定期触发：
 
@@ -128,28 +115,7 @@ GC 选择候选和真正释放资源是两个步骤。淘汰策略先返回已�
 
 ### 2.1 固定大小内存池
 
-DramPool 不使用通用变长分配器。启动参数 `--kvcache-block-sizes` 定义可接受的 Block Size 集合，每一种 Size 对应一个独立 `BufferPool`；`--kvcache-block-proportions` 定义总容量在各规格之间的分配比例。
-
-假设配置如下：
-
-```text
-poolSizeGb             = G
-poolBlockSizes         = [S0, S1, ... Sn]
-poolBlockProportions   = [P0, P1, ... Pn]
-```
-
-第 `i` 类内存池的计算过程为：
-
-```text
-totalBytes   = G × 1024³
-slotStride_i = AlignUp(Si, 64)
-classBytes_i ≈ totalBytes × Pi / ΣP
-slotCount_i  = floor(classBytes_i / slotStride_i)
-```
-
-代码使用整数除法拆分容量，并将总容量除以比例后的余数按比例再次分配，从而避免浮点计算。每一类必须至少形成一个 Slot，Slot 数量也必须能够使用 `uint32_t` 表示，否则启动参数校验失败。
-
-内存布局可以表示为：
+DramPool 不使用通用变长分配器。启动参数 `--kvcache-block-sizes` 定义可接受的 Block Size 集合，每一种 Size 对应一个独立 `BufferPool`；`--kvcache-block-proportions` 定义总容量在各规格之间的分配比例。内存布局：
 
 ```text
 BufferManager::pools_
