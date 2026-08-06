@@ -113,7 +113,45 @@ GC 选择候选和真正释放资源是两个步骤。淘汰策略先返回已�
 
 ## 2. KVCache 数据组织
 
-### 2.1 固定大小内存池
+### 2.1 元数据管理
+
+![DramPool元数据管理](./05_metadata_management_v1.svg)
+
+[Excalidraw 源文件](./05_metadata_management_v1.excalidraw)
+
+`MetadataManager` 是 DramPool 访问 KVCache 元数据的统一入口。Store、Load、Exist 和 Delete 操作先根据 `BlockId` 路由到 `shards_[1024]` 中的一个 `ShardMetadata`，Buffer 的分配与释放则统一交给 `bufferManager_`。
+
+每个 `ShardMetadata` 独立维护主索引和两套淘汰索引，三者通过 `EntryPtr` 共享同一个 `Entry`。`Entry` 保存元数据状态和 Buffer 定位信息，实际 Host DRAM Slot 由 `BufferManager` 下按 Size 划分的 `BufferPool` 持有。
+
+#### 2.1.1 MetadataManager 对外接口
+
+| 接口 | 用途 | 成功结果 | 失败或可见性 |
+| --- | --- | --- | --- |
+| `StoreBegin()` | 创建 Entry 并分配 Buffer | Entry 进入目标 Shard，状态为 `INITIALIZED` | 任一步失败都会回滚已分配资源和已建立索引 |
+| `StoreEnd()` | 发布写入完成的数据 | Entry 转为 `READY` | Key 不存在或状态不合法时失败 |
+| `LoadBegin()` | 获取可加载的 Entry | 返回 Entry，`refCnt + 1` | 非 `READY` Entry 对 Load 不可见 |
+| `LoadEnd()` | 结束一次 Load | `refCnt - 1` | Entry 非 `READY` 或引用计数为 0 时失败 |
+| `Exist()` | 判断数据是否可用 | 命中并刷新 `leaseTimeout` | Key 不存在或 Entry 非 `READY` 时返回未命中 |
+| `Delete()` | 删除 Entry 及其 Buffer | 释放 Slot，并清理主索引和两套淘汰索引 | 存在在途 Load 引用时不能删除 |
+
+#### 2.1.2 StoreBegin 资源一致性
+
+`StoreBegin()` 按照以下顺序建立 Buffer 和元数据索引：
+
+```text
+计算 Shard
+  → BufferManager::Allocate
+  → ShardMetadata::StoreBegin
+      → periodicEvictor_->AddKey
+      → deepEvictor_->AddKey
+      → metadata_.emplace
+```
+
+任一步失败都会回滚此前已经完成的步骤。例如深度淘汰策略插入失败时，先从周期淘汰策略删除 Key；Shard 插入整体失败时，`MetadataManager` 再释放刚分配的 Slot。因此调用方不会观察到只有 Buffer、没有元数据，或只进入部分索引的 Entry。
+
+### 2.2 固定大小内存池
+
+#### 2.2.1 内存组织
 
 DramPool 不使用通用变长分配器。启动参数 `--kvcache-block-sizes` 定义可接受的 Block Size 集合，每一种 Size 对应一个独立 `BufferPool`；`--kvcache-block-proportions` 定义总容量在各规格之间的分配比例。内存布局：
 
@@ -131,7 +169,7 @@ key = S0 bytes                         key = S1 bytes
 
 `BufferPool` 使用 `MemoryType::HOST` 初始化。每个 Pool 对应一段连续 Host 内存，DramPool 启动 Transport 时将这些区域注册为 `transport::MemoryType::Host`，随后 Dump/Load Operation 直接使用 Slot 的 `local_addr`。
 
-### 2.2 BufferManager
+#### 2.2.2 BufferManager
 
 `BufferManager` 持有 `unordered_map<size_t, unique_ptr<BufferPool>> pools_`，Map Key 就是协议项中的 `len`。因此一次 Dump 只能分配与配置尺寸完全相同的 Slot，不会选择“更大的 Pool”容纳较小数据。
 
@@ -155,7 +193,9 @@ struct Buffer {
 
 KVCache Slot 的所有权与元数据绑定。`MetadataManager::StoreBegin()` 先分配 Slot，再把 Entry 插入目标 Shard；插入失败会立即释放 Slot。删除路径则先将 Entry 标记为 `DELETING`，再释放 Slot，最后从 Shard 中移除索引。
 
-### 2.3 Entry 元数据
+### 2.3 Entry
+
+#### 2.3.1 数据结构
 
 `Entry` 是单个 KVCache Block 的运行时实体，主索引和两套淘汰策略都引用同一个 `EntryPtr`。它的字段按可变性可分为不可变属性和受自旋锁保护的运行时属性。
 
@@ -173,7 +213,7 @@ KVCache Slot 的所有权与元数据绑定。`MetadataManager::StoreBegin()` �
 
 `EntryPtr` 定义为 `shared_ptr<Entry>`。Shard 主索引拥有一份引用；在途 Load、淘汰候选或完成处理可以临时持有其他引用，因此从主索引删除 Entry 不会让仍在执行的代码立即访问悬空对象。
 
-### 2.4 Entry 状态机
+#### 2.3.2 状态机
 
 ![Entry状态转换](./04_entry_state_v1.svg)
 
@@ -196,11 +236,7 @@ KVCache Slot 的所有权与元数据绑定。`MetadataManager::StoreBegin()` �
 - `TryMarkDeleting()`：要求尚未处于 `DELETING` 且 `refCnt == 0`。
 - `TryMarkEvicting(now)`：进一步要求状态为 `READY` 且 Lease 已结束。
 
-### 2.5 MetadataManager 与 ShardMetadata
-
-![元数据类与资源关系](./05_metadata_structure_v1.svg)
-
-[Excalidraw 源文件](./05_metadata_structure_v1.excalidraw)
+### 2.4 ShardMetadata
 
 Shard 路由规则固定为：
 
@@ -222,41 +258,17 @@ BlockIdHasher{}(key) % MetadataManager::kShardCnt
 
 Shard 的结构性修改使用 `ReadWriteGuard`，查询或只修改 Entry 内部状态的操作使用 `ReadOnlyGuard`。Entry 自己再用 `Spinlock` 保护 `status/refCnt/leaseTimeout`，形成“Shard 锁保护容器，Entry 锁保护对象状态”的两级并发控制。
 
-### 2.6 元数据操作语义
-
-| 操作 | Shard 锁 | Entry 条件 | Buffer 行为 | 成功后的结果 |
-| --- | --- | --- | --- | --- |
-| `StoreBegin(key, entry)` | 写锁 | Entry 为 `INITIALIZED` 且 `refCnt == 0` | `MetadataManager` 先分配 Slot | Entry 同时进入主索引和两套淘汰策略 |
-| `StoreEnd(key)` | 读锁 | Entry 必须为 `INITIALIZED` | 无 | Entry 转为 `READY` |
-| `LoadBegin(key, entry)` | 读锁 | Entry 必须为 `READY` | 无 | `refCnt + 1`，并通知两套策略发生访问 |
-| `LoadEnd(key)` | 读锁 | Entry 为 `READY` 且 `refCnt > 0` | 无 | `refCnt - 1` |
-| `Exist(key)` | 读锁 | Entry 必须为 `READY` | 无 | 返回命中并刷新 `leaseTimeout` |
-| `Delete(key)` | 先读锁、后写锁 | 必须可标记 `DELETING` | 释放对应 Slot | 从两套策略和主索引中删除 |
-
-`StoreBegin()` 的资源顺序尤其重要：
-
-```text
-计算 Shard
-  → BufferManager::Allocate
-  → ShardMetadata::StoreBegin
-      → periodicEvictor_->AddKey
-      → deepEvictor_->AddKey
-      → metadata_.emplace
-```
-
-任一步失败都会回滚此前已经完成的步骤。例如深度淘汰策略插入失败，会先从周期淘汰策略删除 Key；Shard 插入整体失败时，`MetadataManager` 再释放刚分配的 Slot。
-
-### 2.7 淘汰策略
+### 2.5 淘汰策略
 
 `ShardMetadata` 同时维护 `periodicEvictor_` 和 `deepEvictor_`。当前配置允许二者分别选择 TTL 或 Position，默认周期策略为 TTL、深度策略为 Position。
 
-#### 2.7.1 TTL 淘汰策略
+#### 2.5.1 TTL 淘汰策略
 
 `TtlEvictionPolicy` 使用按 `Entry::lifeTimeout` 升序排列的 `multiset`。扫描从最早过期的 Entry 开始，遇到第一个尚未到期的 Entry 即结束；因此它选择的是“所有当前已经过期且能够成功标记”的 Entry，不使用 `evict_ratio` 限制数量。
 
 Dump 请求中的 `ttl` 不为 0 时，以当前系统时间加请求 TTL 得到 `lifeTimeout`；`ttl == 0` 时使用 `g_config.defaultDumpTtlMs`。生命周期是写入时确定的绝对过期时间，Lookup 命中不会延长它。
 
-#### 2.7.2 Position 淘汰策略
+#### 2.5.2 Position 淘汰策略
 
 `PosEvictionPolicy` 按 `position` 降序排列 Entry，相同位置再按 `lifeTimeout` 升序排列。候选目标数按下式计算：
 
@@ -266,7 +278,7 @@ target = max(1, floor(entries_.size() × evict_ratio))
 
 当 `evict_ratio == 0` 或索引为空时不选择候选。扫描过程中，未通过 `TryMarkEvicting()` 的 Entry 会被跳过，直到达到目标数或遍历结束。
 
-#### 2.7.3 淘汰保护
+#### 2.5.3 淘汰保护
 
 ![淘汰资格判断](./09_gc_eviction_decision_v1.svg)
 
@@ -274,7 +286,7 @@ target = max(1, floor(entries_.size() × evict_ratio))
 
 `lifeTimeout` 决定 TTL 策略是否把 Entry 送入资格检查，`leaseTimeout` 则是在 Entry 已成为策略候选后提供短期保护。这两个时间语义不同：前者表示数据生命周期，后者表示最近命中后的暂缓淘汰窗口。
 
-#### 2.7.4 淘汰触发方式
+#### 2.5.4 淘汰触发方式
 
 | 触发方 | 调用路径 | 使用策略 | 触发条件 |
 | --- | --- | --- | --- |

@@ -499,25 +499,83 @@ def entry_state():
 
 def metadata_structure():
     e = []
-    add(e, text(40, 20, 1340, 45, "MetadataManager、ShardMetadata 与 BufferManager 的结构关系", 26))
-    add(e, rect(390, 90, 360, 100, "MetadataManager\nshards_[1024]", "blue", font=21))
-    add(e, rect(950, 90, 360, 100, "BufferManager\npools_", "orange", font=21))
-    add(e, arrow(750, 140, 950, 140, "bufferManager_"))
-    add(e, rect(60, 290, 280, 250, "ShardMetadata[0]\n\nmetadata_\nperiodicEvictor_\ndeepEvictor_\nmtx_", "green", align="left"))
-    add(e, rect(410, 290, 280, 250, "ShardMetadata[i]\n\nmetadata_\nperiodicEvictor_\ndeepEvictor_\nmtx_", "green", align="left"))
-    add(e, rect(760, 290, 280, 250, "ShardMetadata[1023]\n\nmetadata_\nperiodicEvictor_\ndeepEvictor_\nmtx_", "green", align="left"))
-    add(e, arrow(470, 190, 200, 290, "shards_[0]"))
-    add(e, arrow(570, 190, 550, 290, "ShardIdx(key)"))
-    add(e, arrow(670, 190, 900, 290, "shards_[1023]"))
-    add(e, rect(1090, 300, 250, 220, "BufferPool(size A)\nBufferPool(size B)\n...\nMemoryRegions()", "orange", font=18))
-    add(e, arrow(1130, 190, 1215, 300, "pools_[size]"))
-    add(e, rect(80, 740, 260, 100, "TtlEvictionPolicy", "purple"))
-    add(e, rect(420, 740, 260, 100, "PosEvictionPolicy", "purple"))
-    add(e, rect(760, 740, 280, 100, "EntryPtr\nshared_ptr<Entry>", "gray"))
-    add(e, arrow(190, 540, 210, 740, "periodicEvictor_"))
-    add(e, arrow(550, 540, 550, 740, "deepEvictor_"))
-    add(e, arrow(900, 540, 900, 740, "metadata_[key]"))
-    save("05_metadata_structure_v1", 1400, 1010, e)
+    add(e, text(40, 18, 1800, 45, "DramPool 元数据管理", 28))
+
+    # Manager: one routing surface, two ownership directions.
+    add(e, rect(60, 300, 360, 270, "", "blue"))
+    add(e, text(90, 322, 300, 40, "MetadataManager", 23, COLORS["blue"][0]))
+    add(e, line(90, 380, 390, 380, COLORS["blue"][0]))
+    add(e, text(100, 398, 280, 145,
+                "shards_[1024]\nbufferManager_\ndefaultEvictRatio_\n\nShardIdx(key) → ShardMetadata[i]",
+                16, "#495057", "left"))
+
+    # The shard array is shown once; only the selected shard is expanded.
+    add(e, rect(500, 90, 800, 710, "", "green", dashed=True))
+    add(e, text(530, 105, 600, 36,
+                "shards_ : array<unique_ptr<ShardMetadata>, 1024>",
+                19, COLORS["green"][0], "left"))
+    add(e, rect(550, 165, 170, 70, "ShardMetadata[0]", "gray", font=15))
+    add(e, rect(770, 155, 190, 90, "ShardMetadata[i]", "green", font=17))
+    add(e, text(985, 175, 70, 50, "···", 24, "#868e96"))
+    add(e, rect(1080, 165, 180, 70, "ShardMetadata[1023]", "gray", font=14))
+    add(e, arrow(420, 420, 500, 420))
+
+    add(e, arrow(865, 245, 865, 300, "selected"))
+    add(e, rect(550, 300, 700, 450, "", "green", dashed=True))
+    add(e, text(580, 315, 360, 36, "ShardMetadata[i]", 21, COLORS["green"][0], "left"))
+    add(e, rect(590, 375, 620, 55,
+                "mtx_ : RwLock    ·    leaseTime_ : milliseconds", "gray", font=15))
+    add(e, rect(590, 470, 620, 115,
+                "metadata_ : unordered_map<BlockId, EntryPtr>\nkey₀ → EntryPtr    keyᵢ → EntryPtr    keyₙ → EntryPtr",
+                "green", font=16))
+    add(e, rect(590, 635, 285, 80,
+                "periodicEvictor_\nunique_ptr<EvictionPolicy>", "purple", font=14))
+    add(e, rect(925, 635, 285, 80,
+                "deepEvictor_\nunique_ptr<EvictionPolicy>", "purple", font=14))
+
+    # Main index and both policy indexes share ownership of the same Entry.
+    add(e, line(1275, 520, 1275, 770, "#868e96"))
+    add(e, line(1210, 525, 1275, 525, "#868e96"))
+    add(e, line(732, 715, 732, 770, "#868e96"))
+    add(e, line(1067, 715, 1067, 770, "#868e96"))
+    add(e, line(732, 770, 1275, 770, "#868e96"))
+    add(e, arrow(1275, 555, 1320, 555))
+    add(e, rect(1320, 510, 160, 90, "EntryPtr\nshared_ptr<Entry>", "gray", font=13))
+
+    # Entry is the bridge from metadata indexes to the allocated Host slot.
+    add(e, arrow(1480, 555, 1510, 555))
+    add(e, rect(1510, 245, 320, 420, "", "gray"))
+    add(e, text(1540, 265, 260, 40, "Entry", 23, COLORS["gray"][0]))
+    add(e, line(1540, 320, 1800, 320, COLORS["gray"][0]))
+    add(e, text(1550, 340, 240, 100,
+                "key : BlockId\nshard : uint32_t\nsize : size_t\nbuffer : Buffer",
+                16, "#495057", "left"))
+    add(e, line(1540, 455, 1800, 455, "#adb5bd"))
+    add(e, text(1550, 470, 240, 80,
+                "lock : Spinlock\nstatus · refCnt · leaseTimeout",
+                15, "#495057", "left"))
+    add(e, line(1540, 570, 1800, 570, "#adb5bd"))
+    add(e, text(1550, 585, 240, 52,
+                "lifeTimeout · position", 15, "#495057", "left"))
+
+    # Buffer ownership is separate from metadata ownership.
+    add(e, rect(60, 790, 360, 230, "", "orange"))
+    add(e, text(90, 810, 300, 40, "BufferManager", 22, COLORS["orange"][0]))
+    add(e, line(90, 865, 390, 865, COLORS["orange"][0]))
+    add(e, text(100, 880, 280, 120,
+                "pools_ : map<size,\n  unique_ptr<BufferPool>>\nmemoryRegions_\nAllocate(size) / Free(size, slot)",
+                14, "#495057", "left"))
+    add(e, arrow(240, 570, 240, 790, "bufferManager_ (reference)"))
+
+    add(e, rect(1280, 815, 550, 205, "", "orange", dashed=True))
+    add(e, text(1310, 832, 470, 36, "BufferPool(size) · Host DRAM", 20, COLORS["orange"][0], "left"))
+    for idx, label in enumerate(["slot 0", "slot 1", "···", "slot n"]):
+        add(e, rect(1320 + idx * 120, 900, 95, 70, label,
+                    "orange" if label != "···" else "gray", font=14))
+    add(e, arrow(420, 920, 1280, 920, "pools_[size] (unique_ptr)"))
+    add(e, arrow(1670, 665, 1670, 815, "buffer.addr / slot / length"))
+
+    save("05_metadata_management_v1", 1880, 1080, e)
 
 
 def communication_sequence():
