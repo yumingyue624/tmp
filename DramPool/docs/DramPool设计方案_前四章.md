@@ -127,14 +127,14 @@ GC 选择候选和真正释放资源是两个步骤。淘汰策略先返回已�
 
 | 接口 | 用途 | 锁 | 成功结果 | 失败或可见性 |
 | --- | --- | --- | --- | --- |
-| `StoreBegin()` | 创建 Entry 并分配 Buffer | Shard 写锁 + Entry 写锁（Spinlock） | Entry 进入目标 Shard，状态为 `INITIALIZED` | 任一步失败都会回滚已分配资源和已建立索引 |
-| `StoreEnd()` | 发布写入完成的数据 | Shard 读锁 + Entry 写锁（Spinlock） | Entry 转为 `READY` | Key 不存在或状态不合法时失败 |
-| `LoadBegin()` | 获取可加载的 Entry | Shard 读锁 + Entry 写锁（Spinlock） | 返回 Entry，`refCnt + 1` | 非 `READY` Entry 对 Load 不可见 |
-| `LoadEnd()` | 结束一次 Load | Shard 读锁 + Entry 写锁（Spinlock） | `refCnt - 1` | Entry 非 `READY` 或引用计数为 0 时失败 |
-| `Exist()` | 判断数据是否可用 | Shard 读锁 + Entry 写锁（Spinlock） | 命中并刷新 `leaseTimeout` | Key 不存在或 Entry 非 `READY` 时返回未命中 |
-| `Delete()` | 删除 Entry 及其 Buffer | Shard 读锁 + Entry 写锁（Spinlock）→ Shard 写锁 | 释放 Slot，并清理主索引和两套淘汰索引 | 存在在途 Load 引用时不能删除 |
+| `StoreBegin()` | 创建 Entry 并分配 Buffer | Shard 写锁 + Entry 写锁 | Entry 进入目标 Shard，状态为 `INITIALIZED` | 任一步失败都会回滚已分配资源和已建立索引 |
+| `StoreEnd()` | 发布写入完成的数据 | Shard 读锁 + Entry 写锁 | Entry 转为 `READY` | Key 不存在或状态不合法时失败 |
+| `LoadBegin()` | 获取可加载的 Entry | Shard 读锁 + Entry 写锁 | 返回 Entry，`refCnt + 1` | 非 `READY` Entry 对 Load 不可见 |
+| `LoadEnd()` | 结束一次 Load | Shard 读锁 + Entry 写锁 | `refCnt - 1` | Entry 非 `READY` 或引用计数为 0 时失败 |
+| `Exist()` | 判断数据是否可用 | Shard 读锁 + Entry 写锁 | 命中并刷新 `leaseTimeout` | Key 不存在或 Entry 非 `READY` 时返回未命中 |
+| `Delete()` | 删除 Entry 及其 Buffer | Shard 读锁 + Entry 写锁 → Shard 写锁 | 释放 Slot，并清理主索引和两套淘汰索引 | 存在在途 Load 引用时不能删除 |
 
-#### 2.1.2 StoreBegin 资源一致性
+#### 2.1.2 元数据entry创建
 
 `StoreBegin()` 按照以下顺序建立 Buffer 和元数据索引：
 
