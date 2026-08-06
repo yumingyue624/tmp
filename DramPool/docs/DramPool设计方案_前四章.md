@@ -125,14 +125,14 @@ GC 选择候选和真正释放资源是两个步骤。淘汰策略先返回已�
 
 #### 2.1.1 MetadataManager 对外接口
 
-| 接口 | 用途 | 成功结果 | 失败或可见性 |
-| --- | --- | --- | --- |
-| `StoreBegin()` | 创建 Entry 并分配 Buffer | Entry 进入目标 Shard，状态为 `INITIALIZED` | 任一步失败都会回滚已分配资源和已建立索引 |
-| `StoreEnd()` | 发布写入完成的数据 | Entry 转为 `READY` | Key 不存在或状态不合法时失败 |
-| `LoadBegin()` | 获取可加载的 Entry | 返回 Entry，`refCnt + 1` | 非 `READY` Entry 对 Load 不可见 |
-| `LoadEnd()` | 结束一次 Load | `refCnt - 1` | Entry 非 `READY` 或引用计数为 0 时失败 |
-| `Exist()` | 判断数据是否可用 | 命中并刷新 `leaseTimeout` | Key 不存在或 Entry 非 `READY` 时返回未命中 |
-| `Delete()` | 删除 Entry 及其 Buffer | 释放 Slot，并清理主索引和两套淘汰索引 | 存在在途 Load 引用时不能删除 |
+| 接口 | 用途 | 成功结果 | 失败或可见性 | Shard 锁 |
+| --- | --- | --- | --- | --- |
+| `StoreBegin()` | 创建 Entry 并分配 Buffer | Entry 进入目标 Shard，状态为 `INITIALIZED` | 任一步失败都会回滚已分配资源和已建立索引 | 写锁 |
+| `StoreEnd()` | 发布写入完成的数据 | Entry 转为 `READY` | Key 不存在或状态不合法时失败 | 读锁 |
+| `LoadBegin()` | 获取可加载的 Entry | 返回 Entry，`refCnt + 1` | 非 `READY` Entry 对 Load 不可见 | 读锁 |
+| `LoadEnd()` | 结束一次 Load | `refCnt - 1` | Entry 非 `READY` 或引用计数为 0 时失败 | 读锁 |
+| `Exist()` | 判断数据是否可用 | 命中并刷新 `leaseTimeout` | Key 不存在或 Entry 非 `READY` 时返回未命中 | 读锁 |
+| `Delete()` | 删除 Entry 及其 Buffer | 释放 Slot，并清理主索引和两套淘汰索引 | 存在在途 Load 引用时不能删除 | 先读锁，后写锁 |
 
 #### 2.1.2 StoreBegin 资源一致性
 
