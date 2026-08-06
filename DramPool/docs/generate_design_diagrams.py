@@ -731,18 +731,35 @@ def completion_state():
         add(e, text(x + 36, y + 118, 358, 118, lines, 15, "#343a40", "left"))
 
     def queue_strip(x, y, w, title, footer, prefix, color):
-        add(e, rect(x, y, w, 150, "", color, dashed=True))
+        add(e, rect(x, y, w, 170, "", color, dashed=True))
         add(e, text(x + 16, y + 8, w - 32, 34,
                     title, 15, COLORS[color][0]))
-        slot_w = 68
+        record_colors = [
+            "blue", "purple", "blue", "blue", "purple",
+            "blue", "purple", "blue", "gray", "gray",
+        ]
+        circle_size = 24
         gap = 12
-        start_x = x + (w - (4 * slot_w + 3 * gap)) / 2
-        for index in range(4):
-            sx = start_x + index * (slot_w + gap)
-            label = f"{prefix}{index}" if index < 3 else "empty"
-            add(e, rect(sx, y + 48, slot_w, 55, label,
-                        color if index < 3 else "gray", font=11))
-        add(e, text(x + 16, y + 112, w - 32, 27,
+        row_w = len(record_colors) * circle_size + (len(record_colors) - 1) * gap
+        start_x = x + (w - row_w) / 2
+        for index, record_color in enumerate(record_colors):
+            add(e, ellipse(
+                start_x + index * (circle_size + gap), y + 48,
+                circle_size, circle_size, record_color, stroke_width=1,
+            ))
+
+        legend = [
+            ("blue", "Dump / Load"),
+            ("purple", "Lookup"),
+            ("gray", "empty"),
+        ]
+        legend_x = x + 42
+        for record_color, label in legend:
+            add(e, ellipse(legend_x, y + 88, 18, 18, record_color, stroke_width=1))
+            add(e, text(legend_x + 24, y + 84, 88, 26,
+                        label, 10, COLORS[record_color][0], "left"))
+            legend_x += 118
+        add(e, text(x + 16, y + 128, w - 32, 27,
                     footer, 11, "#495057"))
 
     def pending_window(x, y, w):
@@ -750,10 +767,10 @@ def completion_state():
         add(e, text(x + 16, y + 7, w - 32, 32,
                     "pending_ · deque<CompletionRecord> · g_config.pollerPendingDepth = 64",
                     14, COLORS["orange"][0]))
-        slot_w = 20
-        slot_h = 15
-        gap_x = 5
-        gap_y = 5
+        slot_w = 18
+        slot_h = 18
+        gap_x = 6
+        gap_y = 4
         grid_w = 16 * slot_w + 15 * gap_x
         start_x = x + (w - grid_w) / 2
         start_y = y + 44
@@ -762,17 +779,14 @@ def completion_state():
             for col in range(16):
                 index = row * 16 + col
                 color = stage_colors[index % len(stage_colors)] if index < 56 else "gray"
-                stroke, fill = COLORS[color]
-                cell = base(
-                    "rectangle",
+                cell = ellipse(
                     start_x + col * (slot_w + gap_x),
                     start_y + row * (slot_h + gap_y),
                     slot_w,
                     slot_h,
-                    stroke,
-                    fill,
+                    color,
+                    stroke_width=1,
                 )
-                cell["strokeWidth"] = 1
                 add(e, cell)
             add(e, text(start_x - 40, start_y + row * (slot_h + gap_y) - 2, 32, 19,
                         str(row * 16), 9, "#868e96", "right"))
@@ -788,10 +802,8 @@ def completion_state():
         ]
         legend_x = x + 38
         for color, label in legend:
-            stroke, fill = COLORS[color]
-            cell = base("rectangle", legend_x, legend_y, 18, 18, stroke, fill)
-            cell["strokeWidth"] = 1
-            add(e, cell)
+            stroke, _ = COLORS[color]
+            add(e, ellipse(legend_x, legend_y, 18, 18, color, stroke_width=1))
             add(e, text(legend_x + 25, legend_y - 4, 140, 26,
                         label, 10, stroke, "left"))
             legend_x += 170
@@ -827,7 +839,7 @@ def completion_state():
     pending_window(620, 500, 760)
 
     add(e, arrow(370, 220, 370, 275, "Push", COLORS["purple"][0]))
-    add(e, arrow(370, 425, 370, 535, "TryPop", COLORS["purple"][0]))
+    add(e, arrow(370, 445, 370, 535, "TryPop", COLORS["purple"][0]))
     add(e, arrow(520, 590, 620, 590, "emplace_back", COLORS["orange"][0]))
 
     add(e, text(75, 700, 690, 34,
@@ -914,7 +926,7 @@ def completion_state():
     add(e, text(1885, 990, 205, 42,
                 "从 pending_ 移除", 13, "#495057"))
 
-    save("08_completion_poller_state_v6", 2180, 1410, e)
+    save("08_completion_poller_state_v9", 2180, 1410, e)
 
 
 def gc_decision():

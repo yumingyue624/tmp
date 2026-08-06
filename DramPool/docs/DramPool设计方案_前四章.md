@@ -539,9 +539,9 @@ CompletionPoller 负责一个异步请求从“数据在途”到“响应写回
 
 `completionQueue_` 位于 TaskWorker 与 CompletionPoller 的线程边界之间；`pending_` 完全由 CompletionPoller 持有。当前配置将 `g_config.pollerPendingDepth` 设为 64，因此活动窗口最多同时保存 64 个 `CompletionRecord`，每个记录都独立处于 `PollDataTransfer`、`SubmitResponse` 或 `PollResponseTransfer` 阶段。
 
-![CompletionRecord阶段推进](./08_completion_poller_state_v6.svg)
+![CompletionRecord阶段推进](./08_completion_poller_state_v9.svg)
 
-[Excalidraw 源文件](./08_completion_poller_state_v6.excalidraw)
+[Excalidraw 源文件](./08_completion_poller_state_v9.excalidraw)
 
 #### 4.4.1 CompletionRecord
 
