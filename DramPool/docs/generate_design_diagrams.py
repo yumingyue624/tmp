@@ -221,6 +221,14 @@ def svg_text(e):
 
 
 def to_svg(width: int, height: int, elements: list[dict]) -> str:
+    def marker_id(color: str) -> str:
+        return "arrow_" + "".join(ch for ch in color if ch.isalnum())
+
+    arrow_colors = sorted({
+        e["strokeColor"]
+        for e in elements
+        if e["type"] == "arrow" and e.get("endArrowhead")
+    })
     body = []
     for e in elements:
         kind = e["type"]
@@ -246,7 +254,11 @@ def to_svg(width: int, height: int, elements: list[dict]) -> str:
             p0, p1 = e["points"][0], e["points"][-1]
             x1, y1 = e["x"] + p0[0], e["y"] + p0[1]
             x2, y2 = e["x"] + p1[0], e["y"] + p1[1]
-            marker = ' marker-end="url(#arrow)"' if kind == "arrow" and e.get("endArrowhead") else ""
+            marker = (
+                f' marker-end="url(#{marker_id(stroke)})"'
+                if kind == "arrow" and e.get("endArrowhead")
+                else ""
+            )
             if len(e["points"]) > 2:
                 pts = " ".join(f'{e["x"]+p[0]},{e["y"]+p[1]}' for p in e["points"])
                 body.append(
@@ -260,11 +272,16 @@ def to_svg(width: int, height: int, elements: list[dict]) -> str:
                 )
         elif kind == "text":
             body.append(svg_text(e))
+    markers = "".join(
+        f'<marker id="{marker_id(color)}" markerWidth="10" markerHeight="10" '
+        f'refX="8" refY="3" orient="auto" markerUnits="strokeWidth">'
+        f'<path d="M0,0 L0,6 L9,3 z" fill="{color}"/></marker>'
+        for color in arrow_colors
+    )
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
         f'viewBox="0 0 {width} {height}">'
-        '<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" '
-        'orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#495057"/></marker></defs>'
+        f'<defs>{markers}</defs>'
         '<rect width="100%" height="100%" fill="#ffffff"/>' + "".join(body) + "</svg>"
     )
 
@@ -604,56 +621,300 @@ def communication_sequence():
 
 def request_execution_pipeline():
     e = []
-    add(e, text(40, 15, 1500, 45, "DramPool 请求执行线程与两级 SPSC 队列", 26))
-    lanes = [
-        (90, "DramPoolServer::RequestReceiveLoop", "blue"),
-        (300, "TaskWorker::Run", "green"),
-        (510, "CompletionPoller::Run", "orange"),
-    ]
-    for y, name, color in lanes:
-        add(e, rect(30, y, 1500, 160, "", color, dashed=True))
-        add(e, text(50, y + 15, 340, 32, name, 19, COLORS[color][0], "left"))
-    add(e, rect(420, 135, 230, 70, "Receive + UnpackRequest", "blue"))
-    add(e, rect(730, 135, 190, 70, "requestQueue_", "gray"))
-    add(e, rect(1010, 135, 260, 70, "队列满：等待后重试", "yellow"))
-    add(e, arrow(650, 170, 730, 170, "TryPush"))
-    add(e, arrow(920, 170, 1010, 170, "失败"))
-    add(e, arrow(1120, 215, 850, 215, "等待后重试"))
-    add(e, rect(420, 345, 220, 70, "TryPop(RequestTaskPtr)", "green"))
-    add(e, rect(720, 345, 250, 70, "ProcessDump/Load/Lookup", "green"))
-    add(e, rect(1050, 345, 210, 70, "completionQueue_", "gray"))
-    add(e, arrow(835, 205, 530, 345, "消费"))
-    add(e, arrow(640, 380, 720, 380))
-    add(e, arrow(970, 380, 1050, 380, "Push"))
-    add(e, rect(420, 555, 230, 70, "FillPendingWindow", "orange"))
-    add(e, rect(735, 555, 220, 70, "pending_ deque", "gray"))
-    add(e, rect(1040, 555, 260, 70, "PollPendingCompletions", "orange"))
-    add(e, arrow(1155, 415, 535, 555, "TryPop"))
-    add(e, arrow(650, 590, 735, 590))
-    add(e, arrow(955, 590, 1040, 590))
-    save("07_request_execution_pipeline_v1", 1580, 710, e)
+
+    def thread_card(x, y, w, h, title, entry, details, stop_flag, color):
+        stroke, fill = COLORS[color]
+        shape = base("rectangle", x, y, w, h, stroke, fill)
+        shape["strokeWidth"] = 2
+        add(e, shape)
+        if h <= 150:
+            add(e, text(x + 18, y + 7, w - 36, 27, title, 18, stroke, "left"))
+            add(e, line(x + 18, y + 42, x + w - 18, y + 42, stroke))
+            add(e, text(x + 18, y + 48, w - 36, 27, entry, 15, "#343a40", "left"))
+            add(e, text(x + 18, y + 76, w - 36, 22, details, 12, "#495057", "left"))
+            add(e, text(x + 18, y + h - 25, w - 36, 18, stop_flag, 11, "#868e96", "left"))
+        else:
+            add(e, text(x + 18, y + 12, w - 36, 34, title, 18, stroke, "left"))
+            add(e, line(x + 18, y + 56, x + w - 18, y + 56, stroke))
+            add(e, text(x + 18, y + 67, w - 36, 38, entry, 15, "#343a40", "left"))
+            add(e, text(x + 18, y + 108, w - 36, 52, details, 13, "#495057", "left"))
+            add(e, text(x + 18, y + h - 38, w - 36, 25, stop_flag, 12, "#868e96", "left"))
+
+    add(e, text(45, 20, 1910, 45, "DramPoolServer 线程模型", 27))
+    add(e, rect(30, 85, 1940, 915, "", "gray", dashed=True))
+    add(e, text(60, 100, 360, 34, "DramPoolServer", 20, COLORS["gray"][0], "left"))
+
+    # Request processing path: each queue has exactly one producer and one consumer.
+    add(e, rect(70, 155, 1860, 510, "", "blue", dashed=True))
+    add(e, text(100, 172, 430, 34, "请求处理路径", 19, COLORS["blue"][0], "left"))
+
+    thread_card(
+        105, 275, 275, 205,
+        "requestReceiverThread_",
+        "RequestReceiveLoop()",
+        "Receive → UnpackRequest\n→ RequestTask",
+        "stop: requestReceiverStop_",
+        "purple",
+    )
+    add(e, spsc_queue(
+        440, 235, 300, 280,
+        "requestQueue_\nRequestQueue",
+        "R", "RequestTaskPtr", "purple",
+    ))
+    thread_card(
+        800, 275, 280, 205,
+        "taskWorkerThread_",
+        "TaskWorkerLoop()\n→ TaskWorker::Run()",
+        "TryPop → ProcessOneRequest\n→ CompletionRecord",
+        "stop: taskWorkerStop_",
+        "blue",
+    )
+    add(e, spsc_queue(
+        1140, 235, 300, 280,
+        "completionQueue_\nCompletionQueue",
+        "C", "CompletionRecord", "orange",
+    ))
+    thread_card(
+        1500, 265, 330, 225,
+        "completionPollerThread_",
+        "CompletionPollerLoop()\n→ CompletionPoller::Run()",
+        "FillPendingWindow → pending_\n→ PollPendingCompletions",
+        "stop: completionPollerStop_",
+        "orange",
+    )
+
+    add(e, arrow(380, 377, 440, 377, "TryPush", COLORS["purple"][0]))
+    add(e, arrow(740, 377, 800, 377, "TryPop", COLORS["purple"][0]))
+    add(e, arrow(1080, 377, 1140, 377, "Push", COLORS["orange"][0]))
+    add(e, arrow(1440, 377, 1500, 377, "TryPop", COLORS["orange"][0]))
+
+    # The GC loop is an independent timed path and bypasses both request queues.
+    add(e, rect(70, 710, 1860, 225, "", "green", dashed=True))
+    add(e, text(100, 727, 430, 34, "定时维护路径", 19, COLORS["green"][0], "left"))
+    thread_card(
+        180, 775, 320, 125,
+        "gcThread_",
+        "GCThreadLoop()",
+        "独立于请求处理路径",
+        "stop: gcThreadStop_",
+        "green",
+    )
+    add(e, rect(
+        670, 785, 430, 105,
+        "stopWaitCv_.wait_for\n(g_config.gcIntervalMs)",
+        "gray", font=17,
+    ))
+    add(e, rect(
+        1300, 785, 420, 105,
+        "metadataManager_->PerformEvict()",
+        "green", font=18,
+    ))
+    add(e, arrow(500, 837, 670, 837, "wait", COLORS["green"][0]))
+    add(e, arrow(1100, 837, 1300, 837, "timeout", COLORS["green"][0]))
+
+    save("07_request_execution_pipeline_v2", 2000, 1040, e)
 
 
 def completion_state():
     e = []
-    add(e, text(40, 18, 1320, 45, "CompletionRecord.stage 推进过程", 26))
-    add(e, rect(60, 200, 260, 110, "PollDataTransfer\nGetStatus(data_handle)", "blue", font=19))
-    add(e, diamond(400, 185, 250, 140, "数据传输到达终态？", "yellow"))
-    add(e, rect(745, 200, 250, 110, "SettleDataTransfer\nStoreEnd/LoadEnd/Delete", "green", font=17))
-    add(e, rect(1090, 200, 250, 110, "SubmitResponse\nAllocate + PackResponse", "purple", font=17))
-    add(e, diamond(1085, 420, 260, 145, "响应提交成功？", "yellow"))
-    add(e, rect(740, 440, 250, 105, "PollResponseTransfer\nGetStatus(response_handle)", "orange", font=17))
-    add(e, rect(400, 440, 240, 105, "释放 local_resp_slot\n移除 CompletionRecord", "gray", font=17))
-    add(e, arrow(320, 255, 400, 255))
-    add(e, arrow(650, 255, 745, 255, "是"))
-    add(e, arrow(525, 325, 190, 390, "否：下一轮继续轮询"))
-    add(e, arrow(995, 255, 1090, 255))
-    add(e, arrow(1215, 310, 1215, 420))
-    add(e, arrow(1085, 492, 990, 492, "是"))
-    add(e, arrow(1215, 565, 1215, 645, "NoSpace：保留并重试"))
-    add(e, rect(1060, 645, 310, 80, "CompletionRecord保留在pending_", "yellow"))
-    add(e, arrow(740, 492, 640, 492, "响应到达终态"))
-    save("08_completion_poller_state_v1", 1420, 780, e)
+
+    def state_card(x, y, number, title, entry, lines, color):
+        stroke, fill = COLORS[color]
+        shape = base("rectangle", x, y, 430, 270, stroke, fill)
+        shape["strokeWidth"] = 3
+        add(e, shape)
+        add(e, ellipse(x + 22, y + 18, 52, 52, color, fill_override=stroke, stroke_width=2))
+        add(e, text(x + 22, y + 18, 52, 52, str(number), 21, "#ffffff"))
+        add(e, text(x + 92, y + 18, 310, 42, title, 22, stroke, "left"))
+        add(e, text(x + 92, y + 59, 310, 28, entry, 14, "#495057", "left"))
+        add(e, line(x + 24, y + 102, x + 406, y + 102, stroke))
+        add(e, text(x + 36, y + 118, 358, 118, lines, 15, "#343a40", "left"))
+
+    def queue_strip(x, y, w, title, footer, prefix, color):
+        add(e, rect(x, y, w, 150, "", color, dashed=True))
+        add(e, text(x + 16, y + 8, w - 32, 34,
+                    title, 15, COLORS[color][0]))
+        slot_w = 68
+        gap = 12
+        start_x = x + (w - (4 * slot_w + 3 * gap)) / 2
+        for index in range(4):
+            sx = start_x + index * (slot_w + gap)
+            label = f"{prefix}{index}" if index < 3 else "empty"
+            add(e, rect(sx, y + 48, slot_w, 55, label,
+                        color if index < 3 else "gray", font=11))
+        add(e, text(x + 16, y + 112, w - 32, 27,
+                    footer, 11, "#495057"))
+
+    def pending_window(x, y, w):
+        add(e, rect(x, y, w, 180, "", "orange", dashed=True))
+        add(e, text(x + 16, y + 7, w - 32, 32,
+                    "pending_ · deque<CompletionRecord> · g_config.pollerPendingDepth = 64",
+                    14, COLORS["orange"][0]))
+        slot_w = 20
+        slot_h = 15
+        gap_x = 5
+        gap_y = 5
+        grid_w = 16 * slot_w + 15 * gap_x
+        start_x = x + (w - grid_w) / 2
+        start_y = y + 44
+        stage_colors = ["blue", "purple", "orange", "blue", "orange", "purple"]
+        for row in range(4):
+            for col in range(16):
+                index = row * 16 + col
+                color = stage_colors[index % len(stage_colors)] if index < 56 else "gray"
+                stroke, fill = COLORS[color]
+                cell = base(
+                    "rectangle",
+                    start_x + col * (slot_w + gap_x),
+                    start_y + row * (slot_h + gap_y),
+                    slot_w,
+                    slot_h,
+                    stroke,
+                    fill,
+                )
+                cell["strokeWidth"] = 1
+                add(e, cell)
+            add(e, text(start_x - 40, start_y + row * (slot_h + gap_y) - 2, 32, 19,
+                        str(row * 16), 9, "#868e96", "right"))
+            add(e, text(start_x + grid_w + 8, start_y + row * (slot_h + gap_y) - 2, 32, 19,
+                        str(row * 16 + 15), 9, "#868e96", "left"))
+
+        legend_y = y + 133
+        legend = [
+            ("blue", "PollDataTransfer"),
+            ("purple", "SubmitResponse"),
+            ("orange", "PollResponseTransfer"),
+            ("gray", "empty"),
+        ]
+        legend_x = x + 38
+        for color, label in legend:
+            stroke, fill = COLORS[color]
+            cell = base("rectangle", legend_x, legend_y, 18, 18, stroke, fill)
+            cell["strokeWidth"] = 1
+            add(e, cell)
+            add(e, text(legend_x + 25, legend_y - 4, 140, 26,
+                        label, 10, stroke, "left"))
+            legend_x += 170
+        add(e, text(x + 16, y + 154, w - 32, 20,
+                    "有效位置的颜色表示 record.stage，灰色位置为空",
+                    10, "#495057"))
+
+    add(e, text(45, 20, 2090, 45, "CompletionRecord.stage 状态转换", 28))
+
+    # TaskWorker owns record creation. completionQueue_ is outside both thread-local frames.
+    add(e, rect(100, 70, 540, 180, "", "blue", dashed=True))
+    add(e, text(125, 78, 180, 28,
+                "TaskWorker", 17, COLORS["blue"][0], "left"))
+    add(e, rect(140, 110, 460, 110,
+                "TaskWorker\n创建 CompletionRecord\nstage = PollDataTransfer\n或 SubmitResponse",
+                "blue", font=13))
+
+    # The SPSC queue is the only structure spanning the two thread roles.
+    queue_strip(
+        170, 275, 400,
+        "completionQueue_ · CompletionQueue",
+        "SPSC · TaskWorker → CompletionPoller",
+        "C", "purple",
+    )
+
+    # CompletionPoller owns both pending_ and the complete state machine.
+    add(e, rect(45, 470, 2090, 910, "", "orange", dashed=True))
+    add(e, text(70, 482, 230, 30,
+                "CompletionPoller", 17, COLORS["orange"][0], "left"))
+    add(e, rect(220, 535, 300, 110,
+                "CompletionPoller\nFillPendingWindow()",
+                "orange", font=16))
+    pending_window(620, 500, 760)
+
+    add(e, arrow(370, 220, 370, 275, "Push", COLORS["purple"][0]))
+    add(e, arrow(370, 425, 370, 535, "TryPop", COLORS["purple"][0]))
+    add(e, arrow(520, 590, 620, 590, "emplace_back", COLORS["orange"][0]))
+
+    add(e, text(75, 700, 690, 34,
+                "PollPendingCompletions()：推进 pending_ 中的 CompletionRecord",
+                19, COLORS["gray"][0], "left"))
+
+    state_card(
+        100, 820, 1,
+        "PollDataTransfer",
+        "PollDataTransfer(record)",
+        "GetStatus(data_handle)\nWaiting：保留在 pending_\n终态：SettleDataTransfer()\n发布/删除 Dump，释放 Load 引用",
+        "blue",
+    )
+    state_card(
+        740, 820, 2,
+        "SubmitResponse",
+        "SubmitResponse(record)",
+        "flagBufferPool_.Allocate()\nPackResponse(results)\nExecuteAsync(response Write)",
+        "purple",
+    )
+    state_card(
+        1380, 820, 3,
+        "PollResponseTransfer",
+        "PollResponseTransfer(record)",
+        "GetStatus(response_handle)\n\nWaiting：保留 local_resp_slot\n终态：释放响应 Slot",
+        "orange",
+    )
+
+    # A record may enter pending_ at either of the first two stages.
+    add(e, rect(175, 735, 280, 65,
+                "Dump/Load · 有数据 transfer 任务\n初始 stage = PollDataTransfer",
+                "blue", font=11))
+    add(e, arrow(315, 800, 315, 820, color=COLORS["blue"][0]))
+    add(e, rect(815, 735, 280, 65,
+                "Lookup · 无数据 transfer 任务\n初始 stage = SubmitResponse",
+                "purple", font=11))
+    add(e, arrow(955, 800, 955, 820, color=COLORS["purple"][0]))
+
+    # Main state axis.
+    add(e, arrow(530, 955, 740, 955, color=COLORS["blue"][0]))
+    add(e, text(535, 877, 200, 58,
+                "data_handle 到达终态\nSettleDataTransfer()",
+                13, COLORS["blue"][0]))
+    add(e, rect(540, 985, 190, 58,
+                "stage =\nSubmitResponse", "purple", font=12))
+
+    add(e, arrow(1170, 955, 1380, 955, color=COLORS["purple"][0]))
+    add(e, text(1175, 877, 200, 58,
+                "响应 Write 提交成功\n获得 response_handle",
+                13, COLORS["purple"][0]))
+    add(e, rect(1180, 985, 190, 58,
+                "stage =\nPollResponseTransfer", "orange", font=12))
+
+    # Waiting/NoSpace retain the record in its current stage.
+    add(e, polyarrow(
+        [(220, 1090), (220, 1190), (410, 1190), (410, 1090)],
+        color=COLORS["blue"][0]))
+    add(e, text(225, 1191, 180, 48,
+                "Waiting\n下轮继续轮询", 13, COLORS["blue"][0]))
+
+    add(e, polyarrow(
+        [(845, 1090), (845, 1190), (1010, 1190), (1010, 1090)],
+        color=COLORS["purple"][0]))
+    add(e, text(835, 1191, 185, 48,
+                "flagBufferPool_ NoSpace\n保留记录，下轮重试", 13, COLORS["purple"][0]))
+
+    add(e, polyarrow(
+        [(1500, 1090), (1500, 1190), (1690, 1190), (1690, 1090)],
+        color=COLORS["orange"][0]))
+    add(e, text(1505, 1191, 180, 48,
+                "Waiting\n下轮继续轮询", 13, COLORS["orange"][0]))
+
+    # Terminal exits are kept outside the three-stage axis.
+    add(e, arrow(1080, 1090, 1080, 1265, color=COLORS["red"][0]))
+    add(e, rect(905, 1265, 350, 85,
+                "响应提交失败\n释放已有资源并从 pending_ 移除",
+                "red", font=14))
+
+    add(e, arrow(1810, 955, 2070, 955, color=COLORS["orange"][0]))
+    add(e, ellipse(2070, 930, 50, 50, "gray", fill_override="#495057", stroke_width=2))
+    add(e, text(1835, 870, 225, 48,
+                "response_handle 到达终态\nReleaseResponseBuffer()",
+                12, COLORS["orange"][0]))
+    add(e, text(1885, 990, 205, 42,
+                "从 pending_ 移除", 13, "#495057"))
+
+    save("08_completion_poller_state_v6", 2180, 1410, e)
 
 
 def gc_decision():

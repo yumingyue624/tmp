@@ -479,13 +479,13 @@ Byte 0                      Byte 1
 
 `HealthServer` 还维护自己的监听线程，但它不进入 KVCache 请求处理链路。主线程停留在 `DramPoolDaemon::WaitForShutdown()`，只负责等待退出信号。
 
-![请求执行线程与两级队列](./07_request_execution_pipeline_v1.svg)
+![DramPoolServer 线程模型](./07_request_execution_pipeline_v2.svg)
 
-[Excalidraw 源文件](./07_request_execution_pipeline_v1.excalidraw)
+[Excalidraw 源文件](./07_request_execution_pipeline_v2.excalidraw)
 
 ### 4.2 RequestReceiver
 
-`RequestReceiver` 不是独立类，其实现位于 `DramPoolServer::RequestReceiveLoop()`。该线程完成从网络报文到 `RequestTask` 的全部接入工作：
+`RequestReceiver` 实现位于 `DramPoolServer::RequestReceiveLoop()`。该线程完成从网络报文到 `RequestTask` 的全部接入工作：
 
 ```text
 等待 TcpMessageChannel Ready
@@ -521,7 +521,7 @@ struct RequestTask {
 | `Load` | `ProcessLoad()` | `LoadBegin()`，完成后由 Poller `LoadEnd()` | 批量 `Write` |
 | `Lookup` | `ProcessLookup()` | `Exist()` | 无数据 Operation，直接进入响应阶段 |
 
-TaskWorker 的职责边界是“提交，不等待”。当 Dump/Load 至少有一个 Entry 可以执行时，它构造一个 `transport::Operation`，每个可执行项对应一个 `transport::Segment`，然后调用：
+TaskWorker 的职责边界是“提交，不等待”。Dump/Load 会先逐项执行元数据准备。Dump 中 `StoreBegin()` 成功的 Entry，以及 Load 中 `LoadBegin()` 成功且长度合法的 Entry，会加入 `transfer_items`，并生成对应的 `transport::Segment`。当 `transfer_items` 非空时，TaskWorker 将这些 Segment 组成一个 `transport::Operation`，并调用 `ExecuteAsync()` 异步提交：
 
 ```cpp
 runtime_.transport.ExecuteAsync(operation, handle);
@@ -535,46 +535,57 @@ TaskWorker 通过 `completionQueue_.Push()` 将记录交给 CompletionPoller。�
 
 CompletionPoller 负责一个异步请求从“数据在途”到“响应写回完成”的全部后半生命周期。它不仅轮询 Transport，还决定何时发布 Dump Entry、何时释放 Load 引用，以及本地响应 Slot 何时可以复用。
 
+`TaskWorker` 不直接操作 `pending_`。它先把 `CompletionRecord` 写入跨线程的 `completionQueue_`；CompletionPoller 调用 `FillPendingWindow()`，将记录从 `completionQueue_` 搬入本线程维护的 `pending_`，随后才根据 `record.stage` 推进状态。
+
+`completionQueue_` 位于 TaskWorker 与 CompletionPoller 的线程边界之间；`pending_` 完全由 CompletionPoller 持有。当前配置将 `g_config.pollerPendingDepth` 设为 64，因此活动窗口最多同时保存 64 个 `CompletionRecord`，每个记录都独立处于 `PollDataTransfer`、`SubmitResponse` 或 `PollResponseTransfer` 阶段。
+
+![CompletionRecord阶段推进](./08_completion_poller_state_v6.svg)
+
+[Excalidraw 源文件](./08_completion_poller_state_v6.excalidraw)
+
 #### 4.4.1 CompletionRecord
 
 | 字段 | 所属阶段 | 作用 |
 | --- | --- | --- |
 | `stage` | 全阶段 | 当前执行到 `PollDataTransfer/SubmitResponse/PollResponseTransfer` 中的哪一步 |
-| `data_handle` | 数据传输 | Dump/Load 数据 Operation 的 Handle |
-| `transfer_items` | 数据收尾 | 保存请求内参与传输的 `index_in_request` 和 `key` |
-| `submit_ms` | 轮询 | 计算本阶段等待时间 |
-| `timeout_reported` | 轮询 | 保证同一阶段只记录一次超时 |
-| `opcode` | 响应 | 决定结果编码方式和元数据收尾方式 |
-| `remote_resp_addr` | 响应 | DramStore 响应 Slot 的远端地址 |
-| `peer_one_sided_id` | 传输 | 设置响应 Operation 的 `target_manager` |
-| `results` | 响应 | 按原请求下标保存逐项结果 |
-| `response_handle` | 响应传输 | 响应 Write 的 Handle |
-| `local_resp_slot` | 响应传输 | 保持本地响应源 Buffer 存活到 Write 终态 |
+| `data_handle` | `PollDataTransfer` | Dump/Load 数据 Operation 的 Handle |
+| `transfer_items` | `PollDataTransfer` | 保存请求内参与传输的 `index_in_request` 和 `key` |
+| `submit_ms` | `PollDataTransfer` / `PollResponseTransfer` | 计算本阶段等待时间 |
+| `timeout_reported` | `PollDataTransfer` / `PollResponseTransfer` | 保证同一阶段只记录一次超时 |
+| `opcode` | `PollDataTransfer` / `SubmitResponse` | 决定结果编码方式和元数据收尾方式 |
+| `remote_resp_addr` | `SubmitResponse` | DramStore 响应 Slot 的远端地址 |
+| `peer_one_sided_id` | 全阶段 | 设置响应 Operation 的 `target_manager`，并用于传输异常日志 |
+| `results` | `PollDataTransfer` / `SubmitResponse` | 按原请求下标保存逐项结果 |
+| `response_handle` | `SubmitResponse` / `PollResponseTransfer` | 响应 Write 的 Handle |
+| `local_resp_slot` | `SubmitResponse` / `PollResponseTransfer` | 保持本地响应源 Buffer 存活到 Write 终态 |
 
 #### 4.4.2 Pending Window
 
-CompletionPoller 不直接在 `completionQueue_` 上等待单个 Handle，而是维护本地 `deque<CompletionRecord> pending_`。`FillPendingWindow()` 每轮从队列取记录，直到 `pending_.size()` 达到 `g_config.pollerPendingDepth` 或队列暂时为空。
+`completionQueue_` 和 `pending_` 承担不同职责：
+
+| 结构 | 访问线程 | 作用 |
+| --- | --- | --- |
+| `completionQueue_` | TaskWorker 写入，CompletionPoller 读取 | 作为 `SpscRingQueue<CompletionRecord>` 完成两个线程之间的任务交接 |
+| `pending_` | 仅 CompletionPoller | 作为本地 `deque<CompletionRecord>` 保存正在轮询或等待重试的记录 |
+
+CompletionPoller 不直接在 `completionQueue_` 上等待单个 Handle。`FillPendingWindow()` 每轮调用 `completionQueue_.TryPop()`，再通过 `pending_.emplace_back()` 将记录移入活动窗口，直到 `pending_.size()` 达到 `g_config.pollerPendingDepth` 或 `completionQueue_` 暂时为空。
 
 `PollPendingCompletions()` 对本轮开始时的 Pending 快照扫描一次：
 
 - Waiting 的记录保留在原位置，下轮继续查询。
 - 数据传输刚完成的记录可以在本轮直接进入 `SubmitResponse`，无需额外等待一轮。
 - 响应 Write 到达终态后释放 `local_resp_slot` 并移除记录。
-- 永久性响应提交失败会释放已有资源并移除记录。
 - `flagBufferPool_` 暂时 `NoSpace` 时保留记录，下轮重试。
+- Flag Buffer 分配返回其他错误、`PackResponse()` 失败，或者响应 `ExecuteAsync()` 提交失败时，释放已经分配的响应 Slot 并移除记录。
 
 #### 4.4.3 阶段推进
-
-![CompletionRecord阶段推进](./08_completion_poller_state_v1.svg)
-
-[Excalidraw 源文件](./08_completion_poller_state_v1.excalidraw)
 
 各阶段的行为如下：
 
 | 阶段 | 核心操作 | 退出条件 |
 | --- | --- | --- |
 | `PollDataTransfer` | `GetStatus(data_handle)`，调用 `SettleDataTransfer()` | 数据 Handle 为 Completed 或 Failed |
-| `SubmitResponse` | 分配 `local_resp_slot`、`PackResponse()`、提交响应 Write | 获得有效 `response_handle`，或发生永久失败 |
+| `SubmitResponse` | 分配 `local_resp_slot`、`PackResponse()`、提交响应 Write | 获得有效 `response_handle`，或响应提交失败 |
 | `PollResponseTransfer` | `GetStatus(response_handle)` | 响应 Handle 到达任意终态，随后释放 Slot |
 
 `SettleDataTransfer()` 根据 Opcode 执行不同收尾：
@@ -595,6 +606,16 @@ CompletionPoller 不直接在 `completionQueue_` 上等待单个 Handle，而是
 metadataManager_->PerformEvict();
 ```
 
-`PerformEvict()` 顺序遍历 `shards_[1024]`，对每个 Shard 调用周期淘汰策略。候选 Entry 已经由 `TryMarkEvicting()` 完成状态竞争，因此 GC 在释放 Slot 和删除索引时，不会与新的 Load 引用同时建立。
+`PerformEvict()` 顺序遍历 `shards_[1024]`，对每个 Shard 调用周期淘汰策略。GCThread 与请求处理线程可能同时访问同一个 Shard，代码通过两层锁划分并发边界：
 
-GCThread 与 TaskWorker 会并发访问 `MetadataManager`，并发安全由 Shard 的 `RwLock` 和 Entry 的 `Spinlock` 提供。GC 不经过 `requestQueue_` 或 `completionQueue_`，也不会生成客户端响应。
+| 保护范围 | 加锁方式 | 保护内容 |
+| --- | --- | --- |
+| `ShardMetadata::mtx_` | `StoreBegin()`、`Delete()` 获取写锁；`LoadBegin()`、`LoadEnd()`、`Exist()` 和候选扫描获取读锁 | 写锁保证 `metadata_` 和两个 `EvictionPolicy` 的插入、删除不会与查询或候选扫描并发；读锁允许不同请求并发查询同一 Shard |
+| `Entry::lock` | `TryMarkReady()`、`TryMarkHit()`、`TryIncRef()`、`TryDecRef()` 和 `TryMarkEvicting()` 内部获取自旋锁 | 对 `status`、`refCnt` 和 `leaseTimeout` 的条件检查及后续修改都在持有同一个锁期间完成，其他线程不能在“检查通过”和“写入新值”之间修改该 Entry |
+
+以 `LoadBegin()` 与 GC 同时访问一个 Entry 为例，两者可以同时持有 Shard 读锁，但对 Entry 状态的修改会在 `Entry::lock` 上串行执行：
+
+- 如果 `LoadBegin()` 先执行 `TryIncRef()`，它会在确认 `status == READY` 后增加 `refCnt`。随后 GC 执行 `TryMarkEvicting()` 时发现 `refCnt != 0`，本轮跳过该 Entry。
+- 如果 GC 先执行 `TryMarkEvicting()`，它会在确认 Entry 为 `READY`、`refCnt == 0` 且 Lease 已过期后，将 `status` 改为 `DELETING`。随后 `TryIncRef()` 因状态不再是 `READY` 而失败，新的 Load 无法建立引用。
+
+只有成功转换为 `DELETING` 的 Entry 才会进入淘汰结果。此后 GC 释放对应 Buffer Slot，并通过 `ShardMetadata::Delete()` 获取 Shard 写锁，将该 Key 从两个淘汰策略和 `metadata_` 中一并删除；写锁持有期间，其他线程不能再查询或修改该 Shard 的索引结构。
