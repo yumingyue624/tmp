@@ -280,9 +280,9 @@ target = max(1, floor(entries_.size() × evict_ratio))
 
 #### 2.5.3 淘汰保护
 
-![淘汰资格判断](./09_gc_eviction_decision_v1.svg)
+![淘汰保护判定](./09_gc_eviction_decision_v2.svg)
 
-[Excalidraw 源文件](./09_gc_eviction_decision_v1.excalidraw)
+[Excalidraw 源文件](./09_gc_eviction_decision_v2.excalidraw)
 
 `lifeTimeout` 决定 TTL 策略是否把 Entry 送入资格检查，`leaseTimeout` 则是在 Entry 已成为策略候选后提供短期保护。这两个时间语义不同：前者表示数据生命周期，后者表示最近命中后的暂缓淘汰窗口。
 

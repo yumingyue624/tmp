@@ -658,21 +658,54 @@ def completion_state():
 
 def gc_decision():
     e = []
-    add(e, text(40, 15, 1300, 45, "Entry::TryMarkEvicting 淘汰资格判断", 26))
-    add(e, rect(530, 80, 260, 70, "EvictionPolicy选择EntryPtr", "blue"))
-    add(e, diamond(515, 200, 290, 125, "status == READY？", "yellow"))
-    add(e, diamond(515, 390, 290, 125, "refCnt == 0？", "yellow"))
-    add(e, diamond(515, 580, 290, 125, "leaseTimeout <= now？", "yellow"))
-    add(e, rect(530, 770, 260, 85, "status = DELETING\n返回 true", "green"))
-    add(e, rect(970, 300, 260, 90, "返回 false\n本轮不淘汰", "red"))
-    add(e, arrow(660, 150, 660, 200))
-    add(e, arrow(660, 325, 660, 390, "是"))
-    add(e, arrow(805, 262, 970, 330, "否"))
-    add(e, arrow(660, 515, 660, 580, "是"))
-    add(e, arrow(805, 452, 970, 345, "否"))
-    add(e, arrow(660, 705, 660, 770, "是"))
-    add(e, arrow(805, 642, 970, 365, "否"))
-    save("09_gc_eviction_decision_v1", 1340, 920, e)
+    add(e, text(40, 18, 1820, 45, "Entry::TryMarkEvicting() 淘汰保护判定", 28))
+
+    add(e, rect(280, 90, 1540, 700, "", "gray", dashed=True))
+    add(e, text(305, 102, 420, 34, "Entry::lock critical section", 18, "#868e96", "left"))
+    add(e, rect(1220, 120, 530, 58,
+                "SpinLockGuard guard(lock) · check and transition atomically",
+                "gray", font=14))
+
+    add(e, rect(45, 260, 190, 100,
+                "EvictionPolicy\nEntryPtr candidate", "blue", font=16))
+
+    # The success path stays on one horizontal axis.
+    add(e, diamond(330, 230, 250, 150,
+                   "status ==\nEntryStatus::READY", "yellow", font=16))
+    add(e, diamond(650, 230, 250, 150, "refCnt == 0", "yellow", font=17))
+    add(e, diamond(970, 230, 250, 150, "leaseTimeout <= now", "yellow", font=16))
+    add(e, rect(1290, 250, 230, 110, "status = DELETING", "green", font=18))
+    add(e, rect(1600, 250, 160, 110, "return true", "green", font=18))
+
+    add(e, arrow(235, 310, 330, 310))
+    add(e, arrow(580, 305, 650, 305, "true"))
+    add(e, arrow(900, 305, 970, 305, "true"))
+    add(e, arrow(1220, 305, 1290, 305, "true"))
+    add(e, arrow(1520, 305, 1600, 305))
+
+    # Every rejected condition has one explicit reason and joins one exit rail.
+    add(e, rect(330, 500, 250, 95,
+                "status != READY\n未发布或已进入删除", "red", font=15))
+    add(e, rect(650, 500, 250, 95,
+                "refCnt != 0\n仍有在途 Load", "red", font=15))
+    add(e, rect(970, 500, 250, 95,
+                "leaseTimeout > now\nLease 保护尚未结束", "red", font=15))
+    add(e, arrow(455, 380, 455, 500))
+    add(e, text(465, 420, 65, 28, "false", 13, "#c92a2a", "left"))
+    add(e, arrow(775, 380, 775, 500))
+    add(e, text(785, 420, 65, 28, "false", 13, "#c92a2a", "left"))
+    add(e, arrow(1095, 380, 1095, 500))
+    add(e, text(1105, 420, 65, 28, "false", 13, "#c92a2a", "left"))
+
+    add(e, line(455, 595, 455, 690, COLORS["red"][0]))
+    add(e, line(775, 595, 775, 690, COLORS["red"][0]))
+    add(e, line(1095, 595, 1095, 690, COLORS["red"][0]))
+    add(e, line(455, 690, 1420, 690, COLORS["red"][0]))
+    add(e, arrow(1420, 690, 1480, 690, color=COLORS["red"][0]))
+    add(e, rect(1480, 635, 230, 110,
+                "return false\n本轮不淘汰", "red", font=17))
+
+    save("09_gc_eviction_decision_v2", 1880, 850, e)
 
 
 def validate():
