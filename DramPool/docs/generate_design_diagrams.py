@@ -591,7 +591,7 @@ def communication_sequence():
     for x, name in participants:
         add(e, rect(x - 110, 90, 220, 65, name, "blue" if name != "DramStore" else "green", font=17))
         add(e, line(x, 155, x, 770, dashed=True))
-    add(e, arrow(120, 220, 430, 220, "Send Metadata（控制面）"))
+    add(e, arrow(120, 220, 430, 220, "Send Request（控制面）"))
     add(e, arrow(430, 290, 740, 290, "RequestTaskPtr"))
     add(e, arrow(740, 370, 1050, 370, "ExecuteAsync(Operation)"))
     add(e, arrow(1050, 440, 120, 440, "Dump Read / Load Write（数据面）"))
@@ -599,7 +599,7 @@ def communication_sequence():
     add(e, arrow(1360, 585, 1050, 585, "GetStatus(handle)"))
     add(e, arrow(1360, 660, 1050, 660, "ExecuteAsync(response Write)"))
     add(e, arrow(1050, 725, 120, 725, "ResponseStatus + packed results"))
-    save("06_communication_sequence_v1", 1500, 820, e)
+    save("06_communication_sequence_v2", 1500, 820, e)
 
 
 def request_execution_pipeline():

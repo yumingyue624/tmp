@@ -302,17 +302,17 @@ target = max(1, floor(entries_.size() × evict_ratio))
 
 DramPool 与 DramStore 的通信分成控制请求、KVCache 数据传输和响应回写三个阶段。控制请求负责传递 Opcode、BlockId、远端数据地址和远端响应地址；数据面和响应面由 DramPool 主动发起单边操作。
 
-![控制请求数据传输与响应回写时序](./06_communication_sequence_v1.svg)
+![控制请求数据传输与响应回写时序](./06_communication_sequence_v2.svg)
 
-[Excalidraw 源文件](./06_communication_sequence_v1.excalidraw)
+[Excalidraw 源文件](./06_communication_sequence_v2.excalidraw)
 
 三类操作的数据行为如下：
 
-| 操作 | 控制请求 | KVCache 数据面 | 响应面 |
-| --- | --- | --- | --- |
-| Dump | TCP Metadata | `Read`：远端 Device → 本地 Host | `Write`：本地 Flag Buffer → 远端响应 Slot |
-| Load | TCP Metadata | `Write`：本地 Host → 远端 Device | `Write`：本地 Flag Buffer → 远端响应 Slot |
-| Lookup | TCP Metadata | 无 | `Write`：本地 Flag Buffer → 远端响应 Slot |
+| 操作 | KVCache 数据面 | 响应面 |
+| --- | --- | --- |
+| Dump | `Read`：远端 Device → 本地 Host | `Write`：本地 Flag Buffer → 远端响应 Slot |
+| Load | `Write`：本地 Host → 远端 Device | `Write`：本地 Flag Buffer → 远端响应 Slot |
+| Lookup | 无 | `Write`：本地 Flag Buffer → 远端响应 Slot |
 
 Dump/Load 的数据 Operation 可以包含多个 `transport::Segment`，从而用一个 `TransferHandle` 表示一个请求中所有可执行项。响应始终按请求维度回写一次，并携带完整的逐项结果。
 
@@ -348,39 +348,32 @@ std::unordered_map<std::string, transport::ManagerID> twoSidedToOneSided;
 
 ### 3.3 Dump 请求与响应
 
-#### 3.3.1 请求格式
+**1）请求格式**
 
 Dump 请求由 15 字节请求头和 `batch_size` 个 32 字节 Entry 组成。
 
-| 请求头偏移 | 长度 | 字段 | 说明 |
-| ---: | ---: | --- | --- |
-| 0 | 1 | `opcode` | `KvOpcode::Dump` |
-| 1 | 8 | `resp_addr` | DramStore 响应 Slot 的远端地址 |
-| 9 | 4 | `ttl` | 本次 Dump 的生命周期；0 表示使用服务端默认值 |
-| 13 | 2 | `batch_size` | Entry 数量 |
-
-每个 Dump Entry 的布局为：
-
-| Entry 内偏移 | 长度 | 字段 | 说明 |
-| ---: | ---: | --- | --- |
-| 0 | 16 | `key` | `BlockId` |
-| 16 | 8 | `addr` | DramStore 侧 Device 数据地址 |
-| 24 | 4 | `len` | 数据长度，同时选择 BufferPool |
-| 28 | 4 | `idx` | Block 的绝对位置 |
-
 ```text
-Dump request
+Dump request = 15-byte header + batch_size × 32-byte entry
+
 ┌────────┬───────────┬──────┬────────────┬────────────────┬────────────────┐
 │ opcode │ resp_addr │ ttl  │ batch_size │ entry[0]       │ ...            │
 │ 1 B    │ 8 B       │ 4 B  │ 2 B        │ 32 B           │                │
 └────────┴───────────┴──────┴────────────┴────────────────┴────────────────┘
+
+Dump entry[i] = 32 bytes
+
+offset 0                          16               24        28        32
+       ┌──────────────────────────┬────────────────┬─────────┬─────────┐
+       │ key                      │ addr           │ len     │ idx     │
+       │ BlockId · 16 B           │ 8 B            │ 4 B     │ 4 B     │
+       └──────────────────────────┴────────────────┴─────────┴─────────┘
 ```
 
-#### 3.3.2 响应格式
+`resp_addr` 是 DramStore 响应 Slot 的远端地址；`ttl == 0` 时使用服务端默认生命周期。Entry 中的 `addr` 是 DramStore 侧 Device 数据地址，`len` 同时用于选择 `BufferPool`，`idx` 表示 Block 的绝对位置。
+
+**2）响应格式**
 
 当前代码中的响应状态头是 **1 字节**：`ResponseStatus` 的底层类型为 `std::uint8_t`，`kResponseStatusOffset == 0`，`kResponseResultsOffset == 1`。DramStore 的 `ReplyService` 轮询第 0 字节，当值由 `Pending(0)` 变为 `Ready(1)` 后，再解码后续结果。
-
-> 大纲批注中提到“预留 4 字节 status”，但当前 `kv_protocol.h/cc` 并未实现 4 字节预留。本设计按现有代码记录为 1 字节；如果协议需要固定 4 字节头，需要同步修改协议常量、编解码和两端测试。
 
 Dump 的每项结果占 4 bit，一个字节容纳两个结果：
 
@@ -400,35 +393,59 @@ Byte 0                         Byte 1                    Byte 2
 
 ### 3.4 Load 请求与响应
 
+**1）请求格式**
+
 Load 请求没有 TTL 字段，请求头长度为 11 字节；Entry 仍为 32 字节，布局与 Dump Entry 相同。
 
-| 请求头偏移 | 长度 | 字段 |
-| ---: | ---: | --- |
-| 0 | 1 | `opcode = KvOpcode::Load` |
-| 1 | 8 | `resp_addr` |
-| 9 | 2 | `batch_size` |
+```text
+Load request = 11-byte header + batch_size × 32-byte entry
 
-| Entry 内偏移 | 长度 | 字段 |
-| ---: | ---: | --- |
-| 0 | 16 | `key` |
-| 16 | 8 | `addr` |
-| 24 | 4 | `len` |
-| 28 | 4 | `idx` |
+┌────────┬───────────┬────────────┬────────────────┬────────────────┐
+│ opcode │ resp_addr │ batch_size │ entry[0]       │ ...            │
+│ 1 B    │ 8 B       │ 2 B        │ 32 B           │                │
+└────────┴───────────┴────────────┴────────────────┴────────────────┘
+
+Load entry[i] = 32 bytes
+
+offset 0                          16               24        28        32
+       ┌──────────────────────────┬────────────────┬─────────┬─────────┐
+       │ key                      │ addr           │ len     │ idx     │
+       │ BlockId · 16 B           │ 8 B            │ 4 B     │ 4 B     │
+       └──────────────────────────┴────────────────┴─────────┴─────────┘
+```
 
 当前 DramPool 的 Load 流程不使用 `KvLoadEntry::idx` 参与元数据查询或传输地址计算，但协议仍保留该字段，使 Dump 和 Load Entry 采用统一的 32 字节布局。
+
+**2）响应格式**
 
 Load 响应与 Dump 完全相同：第 0 字节为 `ResponseStatus`，后续每项结果占 4 bit，`0` 表示成功、`1` 表示失败，其余值预留。
 
 ### 3.5 Lookup 请求与响应
 
+**1）请求格式**
+
 Lookup 请求头同样为 11 字节，每个 Entry 只包含 16 字节 `BlockId`：
 
-| 区域 | 偏移 | 长度 | 字段 |
-| --- | ---: | ---: | --- |
-| Header | 0 | 1 | `opcode = KvOpcode::Lookup` |
-| Header | 1 | 8 | `resp_addr` |
-| Header | 9 | 2 | `batch_size` |
-| Entry | 0 | 16 | `key` |
+```text
+Lookup request = 11-byte header + batch_size × 16-byte entry
+
+┌────────┬───────────┬────────────┬────────────────┬────────────────┐
+│ opcode │ resp_addr │ batch_size │ entry[0]       │ ...            │
+│ 1 B    │ 8 B       │ 2 B        │ 16 B           │                │
+└────────┴───────────┴────────────┴────────────────┴────────────────┘
+
+Lookup entry[i] = 16 bytes
+
+offset 0                          16
+       ┌──────────────────────────┐
+       │ key                      │
+       │ BlockId · 16 B           │
+       └──────────────────────────┘
+```
+
+`resp_addr` 是 DramStore 响应 Slot 的远端地址，`batch_size` 表示请求中携带的 Key 数量。
+
+**2）响应格式**
 
 Lookup 每项结果占 1 bit，一个字节容纳八个 Key 的命中状态：
 
