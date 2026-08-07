@@ -543,7 +543,7 @@ CompletionPoller 负责一个异步请求从“数据在途”到“响应写回
 
 [Excalidraw 源文件](./08_completion_poller_state_v9.excalidraw)
 
-#### 4.4.1 CompletionRecord
+1） CompletionRecord
 
 | 字段 | 所属阶段 | 作用 |
 | --- | --- | --- |
@@ -559,7 +559,7 @@ CompletionPoller 负责一个异步请求从“数据在途”到“响应写回
 | `response_handle` | `SubmitResponse` / `PollResponseTransfer` | 响应 Write 的 Handle |
 | `local_resp_slot` | `SubmitResponse` / `PollResponseTransfer` | 保持本地响应源 Buffer 存活到 Write 终态 |
 
-#### 4.4.2 Pending Window
+2）Pending Window
 
 `completionQueue_` 和 `pending_` 承担不同职责：
 
@@ -578,7 +578,7 @@ CompletionPoller 不直接在 `completionQueue_` 上等待单个 Handle。`FillP
 - `flagBufferPool_` 暂时 `NoSpace` 时保留记录，下轮重试。
 - Flag Buffer 分配返回其他错误、`PackResponse()` 失败，或者响应 `ExecuteAsync()` 提交失败时，释放已经分配的响应 Slot 并移除记录。
 
-#### 4.4.3 阶段推进
+3）阶段推进
 
 各阶段的行为如下：
 
@@ -619,3 +619,137 @@ metadataManager_->PerformEvict();
 - 如果 GC 先执行 `TryMarkEvicting()`，它会在确认 Entry 为 `READY`、`refCnt == 0` 且 Lease 已过期后，将 `status` 改为 `DELETING`。随后 `TryIncRef()` 因状态不再是 `READY` 而失败，新的 Load 无法建立引用。
 
 只有成功转换为 `DELETING` 的 Entry 才会进入淘汰结果。此后 GC 释放对应 Buffer Slot，并通过 `ShardMetadata::Delete()` 获取 Shard 写锁，将该 Key 从两个淘汰策略和 `metadata_` 中一并删除；写锁持有期间，其他线程不能再查询或修改该 Shard 的索引结构。
+
+## 5. 核心业务流程
+
+### 5.1 Dump 流程
+
+![DramPool Dump 请求处理时序](./10_drampool_dump_v7.svg)
+
+[Excalidraw 源文件](./10_drampool_dump_v7.excalidraw)
+
+1）创建 Entry 和准备 Segment
+
+`TaskWorker::ProcessDump()` 首先检查响应能否放入单个 Flag Buffer Slot，然后确定本次 Dump 的生命周期：请求中的 `ttl` 非 0 时使用请求值，否则使用 `g_config.defaultDumpTtlMs`。每个请求项都会构造一个 `Entry`，其中 `key`、`size`、`lifeTimeout` 和 `position` 分别来自请求中的 `key`、`len`、TTL 和 `idx`。
+
+随后逐项调用：
+
+```cpp
+runtime_.metadata.StoreBegin(entry.key, metadataEntry);
+```
+
+`MetadataManager::StoreBegin()` 根据 `len` 从 `BufferManager` 分配 Host Buffer，并将 Entry 插入对应的 `ShardMetadata`。各类返回结果的处理如下：
+
+| `StoreBegin()` 结果 | 当前项结果 | 后续动作 |
+| --- | --- | --- |
+| 成功 | 暂记为 `Ok` | 保存 `{index_in_request, key}` 到 `transfer_items`，并生成一个 `transport::Segment` |
+| `DuplicateKey` | `Ok` | `StoreBegin()` 释放本次临时分配的 Buffer，不为该项生成 Segment |
+| 其他失败 | 当前项及其后各项均为 `Failed` | 停止继续分配，已经准备成功的项仍可提交传输 |
+
+Dump 在数据传输前创建处于 `INITIALIZED` 状态的 Entry，传输成功后才通过 `StoreEnd()` 将其发布为 `READY`。因此，正在写入的 KVCache 不会被 Load、Lookup 或 GC 当作可用数据访问；提交失败或传输失败时，对应 Entry 会被删除并释放 Buffer。
+
+单个 Segment 的本地地址为新 Entry 的 `buffer.addr`，远端地址为 Dump Entry 中的 `addr`，长度为 `len`。同一请求中所有可传输项合并到一个 `transport::Operation`：
+
+| Operation 字段 | Dump 取值 | 含义 |
+| --- | --- | --- |
+| `opcode` | `transport::Opcode::Read` | 从远端读取 KVCache |
+| `direct` | `transport::OperationDirect::RemoteDeviceHost` | 数据方向为远端 Device 到本地 Host |
+| `target_manager` | `peer_one_sided_id` | 目标 DramStore 对应的单边通信端点 |
+| `ops` | 一个或多个 `transport::Segment` | 每个 Segment 对应一个成功执行 `StoreBegin()` 的请求项 |
+
+2）提交数据传输
+
+当 `transfer_items` 为空时，说明所有项均为重复 Key 或没有任何项完成元数据准备，TaskWorker 不提交数据 Operation，直接调用 `QueueResponse()`。当至少存在一个可传输项时，TaskWorker 调用 `TransportManager::ExecuteAsync()` 提交整批 Read Operation。
+
+提交成功后，TaskWorker 创建初始阶段为 `PollDataTransfer` 的 `CompletionRecord`，保存 `data_handle`、`transfer_items` 和逐项 `results`，再写入 `completionQueue_`。如果提交失败或未返回有效 Handle，则先对本次新建的 Entry 逐项调用 `MetadataManager::Delete()`，将这些项改为 `Failed`，之后直接进入响应阶段。
+
+3）发布或回滚 Entry
+
+CompletionPoller 从 `completionQueue_` 取得记录后，通过 `GetStatus(data_handle)` 等待数据传输终态。`Waiting` 期间 Entry 始终保持 `INITIALIZED`；等待时间超过 `g_config.opTimeoutMs` 时只记录一次诊断日志，不提前删除 Entry，也不复用 Transport 仍可能访问的 Buffer。
+
+数据传输到达终态后，`SettleDataTransfer()` 按项完成元数据收尾：
+
+| 数据传输结果 | 元数据操作 | Dump 结果 |
+| --- | --- | --- |
+| `Completed` 且 `StoreEnd()` 成功 | Entry 从 `INITIALIZED` 转为 `READY` | `Ok` |
+| `Completed` 但 `StoreEnd()` 失败 | 调用 `Delete()` 回收 Entry 和 Buffer | `Failed` |
+| 非 `Completed` 终态或 `GetStatus()` 失败 | 调用 `Delete()` 回收 Entry 和 Buffer | `Failed` |
+
+收尾完成后，记录进入 `SubmitResponse`。CompletionPoller 从 `flagBufferPool_` 分配 `local_resp_slot`，调用 `ProtocolManager::PackResponse()` 写入逐项结果，再提交一条 Write Operation 将响应写到请求指定的 `resp_addr`。如果打包或提交失败，已经分配的 Slot 会立即释放；提交成功后则必须保留到响应传输到达终态或状态查询失败，避免 Transport 仍在读取已经复用的本地 Buffer。
+
+### 5.2 Load 流程
+
+![DramPool Load 请求处理时序](./11_drampool_load_v4.svg)
+
+Load 不创建 Entry，也不从 `BufferManager` 分配新 Slot；它只读取已经处于 `READY` 状态的 Entry。`LoadBegin()` 增加的 `refCnt` 会覆盖整个异步传输周期，避免 GC 在本地 Host Buffer 仍被 Transport 使用时淘汰该 Entry。
+
+[Excalidraw 源文件](./11_drampool_load_v4.excalidraw)
+
+1）固定 Entry 并校验长度
+
+`TaskWorker::ProcessLoad()` 为每个请求项调用 `MetadataManager::LoadBegin(key, metadataEntry)`。该操作在 Shard 读锁保护下找到 Entry，并通过 `Entry::TryIncRef()` 检查状态和增加引用；只有 `READY` Entry 才能成功建立 Load 引用。
+
+| 条件 | 处理方式 | 当前项结果 |
+| --- | --- | --- |
+| Key 不存在、Entry 非 `READY` 或 `LoadBegin()` 失败 | 不生成 Segment，继续处理下一项 | `Failed` |
+| `entry.len > metadataEntry->size` | 立即调用 `LoadEnd()` 撤销刚建立的引用 | `Failed` |
+| `entry.len <= metadataEntry->size` | 加入 `transfer_items`，使用 Entry 的 Host Buffer 生成 Segment | 暂记为 `Ok` |
+
+长度校验允许请求读取已存数据的前 `len` 字节，但不允许越过 Entry 创建时记录的 `size`。校验失败后必须立即执行 `LoadEnd()`，否则未参与传输的请求项会长期占用 `refCnt`，阻止后续淘汰。
+
+2）从 Host Buffer 写入远端 Device
+
+所有合法项被合并到一条批量 Operation：
+
+| Operation 字段 | Load 取值 | 含义 |
+| --- | --- | --- |
+| `opcode` | `transport::Opcode::Write` | 将 DramPool 中的数据写到远端地址 |
+| `direct` | `transport::OperationDirect::RemoteDeviceHost` | 本地端为 Host，远端为 Device |
+| Segment 本地地址 | `metadataEntry->buffer.addr` | DramPool 保存 KVCache 的 Host Buffer |
+| Segment 远端地址 | 请求项的 `addr` | DramStore 提供的 Device 目标地址 |
+| Segment 长度 | 请求项的 `len` | 本次实际加载长度 |
+
+没有合法项时，TaskWorker 直接构造 `SubmitResponse` 阶段的记录。提交 Operation 失败时，对已经加入 `transfer_items` 的每个 Key 调用 `LoadEnd()`，并把相应结果改为 `Failed`；提交成功时，则将 `data_handle` 和 `transfer_items` 交给 CompletionPoller。
+
+3）释放 Load 引用
+
+数据 Operation 到达任意终态后，CompletionPoller 都会对每个 `TransferItem` 调用 `MetadataManager::LoadEnd(key)`，使 `refCnt` 与已经结束的 Load 数量保持一致。逐项结果同时受传输终态和引用释放结果约束：
+
+| 数据传输结果 | `LoadEnd()` 结果 | Load 结果 |
+| --- | --- | --- |
+| `Completed` | 成功 | `Ok` |
+| `Completed` | 失败 | `Failed` |
+| 非 `Completed` 终态或 `GetStatus()` 失败 | 成功或失败 | `Failed` |
+
+完成引用释放后，响应路径与 Dump 相同：`SubmitResponse` 分配并填充 Flag Buffer，提交到 `resp_addr` 的响应 Write，随后在 `PollResponseTransfer` 中等待响应传输终态并释放本地响应 Slot。
+
+### 5.3 Lookup 流程
+
+![DramPool Lookup 请求处理时序](./12_drampool_lookup_v3.svg)
+
+Lookup 只访问元数据，不提交 KVCache 数据 Operation，因此生成的 `CompletionRecord` 从 `SubmitResponse` 开始。它仍然经过 `completionQueue_` 和 CompletionPoller，由后者统一管理 Flag Buffer、响应 Write 及本地响应 Slot 的生命周期。
+
+[Excalidraw 源文件](./12_drampool_lookup_v3.excalidraw)
+
+1）逐项判断可见性
+
+`TaskWorker::ProcessLookup()` 先将全部结果初始化为 `LookupResult::NotFound`，再按请求顺序对每个 Key 调用：
+
+```cpp
+runtime_.metadata.Exist(request.entries[index].key);
+```
+
+`MetadataManager::Exist()` 将请求路由到对应 `ShardMetadata`。Shard 在读锁内取得 `EntryPtr`，随后 `Entry::TryMarkHit()` 在 Entry 锁内完成状态检查和 Lease 刷新：只有状态为 `READY` 的 Entry 返回命中，并把 `leaseTimeout` 更新为当前时间加 `leaseTime_`；不存在、仍为 `INITIALIZED` 或已经进入 `DELETING` 的 Entry 均返回未命中。
+
+Lookup 会扫描 `batch_size` 范围内的全部 Key，各项之间互不影响。中间出现 `NotFound` 不会提前停止后续查询，返回值也不是“最长命中前缀”，而是与请求项一一对应的 Bitmap。
+
+| `Exist()` 结果 | `results[index]` | 对 Entry 的影响 |
+| --- | --- | --- |
+| `true` | `LookupResult::Exists` | 刷新 `leaseTimeout`，延长淘汰保护时间 |
+| `false` | `LookupResult::NotFound` | 不修改结果中其他 Key，也不创建或删除 Entry |
+
+2）直接进入响应阶段
+
+查询完成后，`QueueResponse()` 创建 `stage = CompletionStage::SubmitResponse` 的 `CompletionRecord`，其中 `results` 保存逐项查询结果，`remote_resp_addr` 保存 DramStore 的响应地址。该记录不包含有效的 `data_handle` 或 `transfer_items`，也不会经过 `PollDataTransfer`。
+
+CompletionPoller 将记录从 `completionQueue_` 搬入 `pending_` 后，直接执行响应提交：分配 `local_resp_slot`、调用 `PackResponse()` 将结果压缩为 Bitmap，再通过 TransportManager 将响应写入 `resp_addr`。如果 `flagBufferPool_` 暂时返回 `NoSpace`，记录保持在 `SubmitResponse` 阶段并在下一轮重试；响应 Write 提交成功后，记录转入 `PollResponseTransfer`，直至释放本地响应 Slot 并从 `pending_` 移除。
