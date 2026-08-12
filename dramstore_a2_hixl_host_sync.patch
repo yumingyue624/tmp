@@ -1,0 +1,213 @@
+diff --git a/ucm/transport/p2p/include/protocols/hixl/hixl_transport.h b/ucm/transport/p2p/include/protocols/hixl/hixl_transport.h
+index 4f8458a..d2be634 100644
+--- a/ucm/transport/p2p/include/protocols/hixl/hixl_transport.h
++++ b/ucm/transport/p2p/include/protocols/hixl/hixl_transport.h
+@@ -2,6 +2,7 @@
+ 
+ #include <cstddef>
+ #include <cstdint>
++#include <future>
+ #include <memory>
+ #include <mutex>
+ #include <shared_mutex>
+@@ -59,9 +60,11 @@ private:
+     struct PendingTransfer {
+         size_t instance_index = SIZE_MAX;
+         hixl::TransferReq request = nullptr;
++        std::shared_future<Status> queued_sync;
+     };
+ 
+-    Status ValidateTransferLocked(const Operation& batch, size_t instance_index) const;
++    Status ValidateTransferLocked(const Operation& batch, size_t instance_index,
++                                  bool* uses_host_memory = nullptr) const;
+     Status BuildRouteLocked(const ManagerID& manager_id, Peer& peer);
+     Status DisconnectRoute(const Peer& peer, bool ignore_failure);
+ 
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+index 4094ed2..b09a584 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+@@ -22,6 +22,23 @@ std::vector<hixl::TransferOpDesc> BuildTransferOpDesc(const std::vector<Segment>
+     return descs;
+ }
+ 
++Status ExecuteTransferSync(hixl::Hixl& engine, const std::string& remote_engine, Opcode opcode,
++                           const std::vector<Segment>& segments, int32_t timeout_ms)
++{
++    const auto descs = BuildTransferOpDesc(segments);
++    const auto operation = opcode == Opcode::Read ? hixl::READ : hixl::WRITE;
++    const auto native_status =
++        engine.TransferSync(remote_engine.c_str(), operation, descs, timeout_ms);
++    if (native_status != hixl::SUCCESS) {
++        UC_ERROR(
++            "[Transport][HIXL] operation failed: TransferSync(\"{}\", ops={}, timeout_ms={}) "
++            "returned {}",
++            remote_engine, descs.size(), timeout_ms, static_cast<int>(native_status));
++        return Status::Error();
++    }
++    return Status::OK();
++}
++
+ }  // namespace
+ 
+ HixlInstance::HixlInstance(Endpoint local_endpoint, int32_t device_id)
+@@ -212,21 +229,30 @@ Status HixlInstance::TransferSync(const std::string& remote_engine, Opcode opcod
+                                   const std::vector<Segment>& segments, int32_t timeout_ms)
+ {
+     return Run([&](hixl::Hixl& engine) {
+-        const auto descs = BuildTransferOpDesc(segments);
+-        const auto operation = opcode == Opcode::Read ? hixl::READ : hixl::WRITE;
+-        const auto native_status =
+-            engine.TransferSync(remote_engine.c_str(), operation, descs, timeout_ms);
+-        if (native_status != hixl::SUCCESS) {
+-            UC_ERROR(
+-                "[Transport][HIXL] operation failed: TransferSync(\"{}\", ops={}, timeout_ms={}) "
+-                "returned {}",
+-                remote_engine, descs.size(), timeout_ms, static_cast<int>(native_status));
+-            return Status::Error();
+-        }
+-        return Status::OK();
++        return ExecuteTransferSync(engine, remote_engine, opcode, segments, timeout_ms);
+     });
+ }
+ 
++Status HixlInstance::QueueTransferSync(const std::string& remote_engine, Opcode opcode,
++                                       const std::vector<Segment>& segments, int32_t timeout_ms,
++                                       std::shared_future<Status>& result)
++{
++    result = {};
++    QueuedTask queued(
++        [remote_engine, opcode, segments, timeout_ms](hixl::Hixl& engine) {
++            return ExecuteTransferSync(engine, remote_engine, opcode, segments, timeout_ms);
++        });
++    auto future = queued.get_future().share();
++    {
++        std::lock_guard<std::mutex> lock(mutex_);
++        if (!initialized_ || stopping_) { return Status::Error(); }
++        tasks_.push_back(std::move(queued));
++    }
++    result = std::move(future);
++    cv_.notify_one();
++    return Status::OK();
++}
++
+ Status HixlInstance::TransferAsync(const std::string& remote_engine, Opcode opcode,
+                                    const std::vector<Segment>& segments, hixl::TransferReq& request)
+ {
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.h b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.h
+index 9d3a786..107d481 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.h
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.h
+@@ -37,6 +37,9 @@ public:
+     Status Disconnect(const std::string& remote_engine, int32_t timeout_ms);
+     Status TransferSync(const std::string& remote_engine, Opcode opcode,
+                         const std::vector<Segment>& segments, int32_t timeout_ms);
++    Status QueueTransferSync(const std::string& remote_engine, Opcode opcode,
++                             const std::vector<Segment>& segments, int32_t timeout_ms,
++                             std::shared_future<Status>& result);
+     Status TransferAsync(const std::string& remote_engine, Opcode opcode,
+                          const std::vector<Segment>& segments, hixl::TransferReq& request);
+     Status GetTransferStatus(hixl::TransferReq request, TransferStatus& status);
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp b/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+index 66b0bec..780fc1f 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+@@ -1,5 +1,6 @@
+ #include "protocols/hixl/hixl_transport.h"
+ #include <arpa/inet.h>
++#include <chrono>
+ #include <limits>
+ #include <netdb.h>
+ #include <netinet/in.h>
+@@ -418,11 +419,13 @@ Status HixlTransport::Disconnect(const ManagerID& manager_id)
+     return status;
+ }
+ 
+-Status HixlTransport::ValidateTransferLocked(const Operation& batch, size_t instance_index) const
++Status HixlTransport::ValidateTransferLocked(const Operation& batch, size_t instance_index,
++                                             bool* uses_host_memory) const
+ {
+     if (batch.target_manager.empty() || batch.ops.empty() || instance_index >= instances_.size()) {
+         return Status::InvalidParam();
+     }
++    if (uses_host_memory != nullptr) { *uses_host_memory = false; }
+     for (const auto& item : batch.ops) {
+         if (item.local_addr == nullptr || item.length == 0 || item.remote_addr == 0) {
+             return Status::InvalidParam();
+@@ -440,6 +443,10 @@ Status HixlTransport::ValidateTransferLocked(const Operation& batch, size_t inst
+                 memory.second->native_handles.find(instance_index) !=
+                     memory.second->native_handles.end()) {
+                 registered = true;
++                if (uses_host_memory != nullptr &&
++                    memory.second->region.type == MemoryType::Host) {
++                    *uses_host_memory = true;
++                }
+                 break;
+             }
+         }
+@@ -503,12 +510,31 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+         remote_engine = peer_state.instances.front().endpoint.ToString();
+     }
+ 
++    bool uses_host_memory = false;
+     {
+         std::shared_lock<std::shared_mutex> memory_lock(memories_mutex_);
+-        const auto transfer_status = ValidateTransferLocked(batch, local_index);
++        const auto transfer_status =
++            ValidateTransferLocked(batch, local_index, &uses_host_memory);
+         if (transfer_status != Status::OK()) { return transfer_status; }
+     }
+ 
++    // Ascend A2 with HIXL 8.5.1 cannot execute Host-memory transfers through
++    // the native async path. Queue the working synchronous API on the instance
++    // worker while preserving the upper-layer async handle and polling lifecycle.
++    if (uses_host_memory) {
++        std::shared_future<Status> queued_sync;
++        const auto status = instances_[local_index]->QueueTransferSync(
++            remote_engine, batch.opcode, batch.ops, transfer_timeout_ms_, queued_sync);
++        if (status != Status::OK()) { return status; }
++
++        std::lock_guard<std::mutex> pending_lock(pending_mutex_);
++        handle = next_transfer_handle_++;
++        if (handle == kInvalidTransferHandle) { handle = next_transfer_handle_++; }
++        pending_transfers_.emplace(
++            handle, PendingTransfer{local_index, nullptr, std::move(queued_sync)});
++        return Status::OK();
++    }
++
+     hixl::TransferReq request = nullptr;
+     const auto status =
+         instances_[local_index]->TransferAsync(remote_engine, batch.opcode, batch.ops, request);
+@@ -518,7 +544,7 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
+         handle = next_transfer_handle_++;
+         if (handle == kInvalidTransferHandle) { handle = next_transfer_handle_++; }
+-        pending_transfers_.emplace(handle, PendingTransfer{local_index, request});
++        pending_transfers_.emplace(handle, PendingTransfer{local_index, request, {}});
+     }
+     return Status::OK();
+ }
+@@ -538,6 +564,23 @@ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status)
+         pending = it->second;
+     }
+ 
++    if (pending.queued_sync.valid()) {
++        if (pending.queued_sync.wait_for(std::chrono::seconds(0)) !=
++            std::future_status::ready) {
++            status = TransferStatus::Waiting;
++            return Status::OK();
++        }
++        try {
++            status = pending.queued_sync.get() == Status::OK() ? TransferStatus::Completed
++                                                               : TransferStatus::Failed;
++        } catch (...) {
++            status = TransferStatus::Failed;
++        }
++        std::lock_guard<std::mutex> pending_lock(pending_mutex_);
++        pending_transfers_.erase(handle);
++        return Status::OK();
++    }
++
+     TransferStatus transfer_status = TransferStatus::Waiting;
+     const auto query_status =
+         instances_[pending.instance_index]->GetTransferStatus(pending.request, transfer_status);
