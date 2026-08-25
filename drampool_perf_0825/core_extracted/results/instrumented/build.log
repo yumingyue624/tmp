@@ -1,0 +1,224 @@
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -S/home/drampool/nt/hixl -B/home/drampool/nt/hixl/build --check-build-system CMakeFiles/Makefile.cmake 0
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_progress_start /home/drampool/nt/hixl/build/CMakeFiles /home/drampool/nt/hixl/build//CMakeFiles/progress.marks
+/usr/bin/gmake  -f CMakeFiles/Makefile2 all
+gmake[1]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f CMakeFiles/version_hixl_info.dir/build.make CMakeFiles/version_hixl_info.dir/depend
+/usr/bin/gmake  -f CMakeFiles/device.dir/build.make CMakeFiles/device.dir/depend
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/dcmi_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/dcmi_proxy_static.dir/depend
+/usr/bin/gmake  -f src/llm_datadist/CMakeFiles/adxl_static.dir/build.make src/llm_datadist/CMakeFiles/adxl_static.dir/depend
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/CMakeFiles/version_hixl_info.dir/DependInfo.cmake "--color=" version_hixl_info
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/CMakeFiles/device.dir/DependInfo.cmake "--color=" device
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/hixl/proxy /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/hixl/proxy /home/drampool/nt/hixl/build/src/hixl/proxy/CMakeFiles/dcmi_proxy_static.dir/DependInfo.cmake "--color=" dcmi_proxy_static
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/llm_datadist /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/llm_datadist /home/drampool/nt/hixl/build/src/llm_datadist/CMakeFiles/adxl_static.dir/DependInfo.cmake "--color=" adxl_static
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f CMakeFiles/device.dir/build.make CMakeFiles/device.dir/build
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/dcmi_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/dcmi_proxy_static.dir/build
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f CMakeFiles/version_hixl_info.dir/build.make CMakeFiles/version_hixl_info.dir/build
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/hixl/proxy/CMakeFiles/dcmi_proxy_static.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'CMakeFiles/version_hixl_info.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+[  1%] Performing build step for 'device'
+[  2%] Built target dcmi_proxy_static
+[  3%] Built target version_hixl_info
+cd /home/drampool/nt/hixl/build/device_build && /usr/bin/gmake
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/depend
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/hccp_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/hccp_proxy_static.dir/depend
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/llm_datadist/CMakeFiles/adxl_static.dir/build.make src/llm_datadist/CMakeFiles/adxl_static.dir/build
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/hixl/proxy /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/hixl/proxy /home/drampool/nt/hixl/build/src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/DependInfo.cmake "--color=" hcomm_proxy_static
+gmake[3]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -S/home/drampool/nt/hixl/cmake/device -B/home/drampool/nt/hixl/build/device_build --check-build-system CMakeFiles/Makefile.cmake 0
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/hixl/proxy /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/hixl/proxy /home/drampool/nt/hixl/build/src/hixl/proxy/CMakeFiles/hccp_proxy_static.dir/DependInfo.cmake "--color=" hccp_proxy_static
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_progress_start /home/drampool/nt/hixl/build/device_build/CMakeFiles /home/drampool/nt/hixl/build/device_build//CMakeFiles/progress.marks
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/build
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/hccp_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/hccp_proxy_static.dir/build
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/llm_datadist/CMakeFiles/adxl_static.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f CMakeFiles/Makefile2 all
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/hixl/proxy/CMakeFiles/hccp_proxy_static.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[4]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/bin/gmake  -f CMakeFiles/slog_stub_tmp.dir/build.make CMakeFiles/slog_stub_tmp.dir/depend
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+cd /home/drampool/nt/hixl/build/device_build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build/CMakeFiles/slog_stub_tmp.dir/DependInfo.cmake "--color=" slog_stub_tmp
+[ 20%] Built target adxl_static
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/dsmi_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/dsmi_proxy_static.dir/depend
+[ 22%] Built target hcomm_proxy_static
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/hixl/proxy /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/hixl/proxy /home/drampool/nt/hixl/build/src/hixl/proxy/CMakeFiles/dsmi_proxy_static.dir/DependInfo.cmake "--color=" dsmi_proxy_static
+/usr/bin/gmake  -f src/python/metadef_wrapper/CMakeFiles/metadef_wrapper.dir/build.make src/python/metadef_wrapper/CMakeFiles/metadef_wrapper.dir/depend
+[ 23%] Built target hccp_proxy_static
+/usr/bin/gmake  -f CMakeFiles/ccl_kernel_stub_tmp.dir/build.make CMakeFiles/ccl_kernel_stub_tmp.dir/depend
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/python/metadef_wrapper /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/python/metadef_wrapper /home/drampool/nt/hixl/build/src/python/metadef_wrapper/CMakeFiles/metadef_wrapper.dir/DependInfo.cmake "--color=" metadef_wrapper
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/bin/gmake  -f CMakeFiles/slog_stub_tmp.dir/build.make CMakeFiles/slog_stub_tmp.dir/build
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+cd /home/drampool/nt/hixl/build/device_build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build/CMakeFiles/ccl_kernel_stub_tmp.dir/DependInfo.cmake "--color=" ccl_kernel_stub_tmp
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Nothing to be done for 'CMakeFiles/slog_stub_tmp.dir/build'.
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/dsmi_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/dsmi_proxy_static.dir/build
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/python/metadef_wrapper/CMakeFiles/metadef_wrapper.dir/build.make src/python/metadef_wrapper/CMakeFiles/metadef_wrapper.dir/build
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/bin/gmake  -f CMakeFiles/ccl_kernel_stub_tmp.dir/build.make CMakeFiles/ccl_kernel_stub_tmp.dir/build
+[ 17%] Built target slog_stub_tmp
+/usr/bin/gmake  -f src/ops/hixl_kernel/CMakeFiles/hixl_aicpu_kernel_json.dir/build.make src/ops/hixl_kernel/CMakeFiles/hixl_aicpu_kernel_json.dir/depend
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/hixl/proxy/CMakeFiles/dsmi_proxy_static.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Nothing to be done for 'CMakeFiles/ccl_kernel_stub_tmp.dir/build'.
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+cd /home/drampool/nt/hixl/build/device_build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/src/ops/hixl_kernel /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build/src/ops/hixl_kernel /home/drampool/nt/hixl/build/device_build/src/ops/hixl_kernel/CMakeFiles/hixl_aicpu_kernel_json.dir/DependInfo.cmake "--color=" hixl_aicpu_kernel_json
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/python/metadef_wrapper/CMakeFiles/metadef_wrapper.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+[ 35%] Built target ccl_kernel_stub_tmp
+[ 24%] Built target dsmi_proxy_static
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/depend
+/usr/bin/gmake  -f src/hixl/CMakeFiles/cann_hixl.dir/build.make src/hixl/CMakeFiles/cann_hixl.dir/depend
+[ 26%] Built target metadef_wrapper
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+cd /home/drampool/nt/hixl/build/device_build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/src/hixl/proxy /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build/src/hixl/proxy /home/drampool/nt/hixl/build/device_build/src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/DependInfo.cmake "--color=" hcomm_proxy_static
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/bin/gmake  -f src/ops/hixl_kernel/CMakeFiles/hixl_aicpu_kernel_json.dir/build.make src/ops/hixl_kernel/CMakeFiles/hixl_aicpu_kernel_json.dir/build
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Nothing to be done for 'src/ops/hixl_kernel/CMakeFiles/hixl_aicpu_kernel_json.dir/build'.
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/bin/gmake  -f src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/build.make src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/build
+[ 41%] Built target hixl_aicpu_kernel_json
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Nothing to be done for 'src/hixl/proxy/CMakeFiles/hcomm_proxy_static.dir/build'.
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/hixl /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/hixl /home/drampool/nt/hixl/build/src/hixl/CMakeFiles/cann_hixl.dir/DependInfo.cmake "--color=" cann_hixl
+[ 52%] Built target hcomm_proxy_static
+/usr/bin/gmake  -f src/ops/hixl_kernel/CMakeFiles/cann_hixl_kernel.dir/build.make src/ops/hixl_kernel/CMakeFiles/cann_hixl_kernel.dir/depend
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+cd /home/drampool/nt/hixl/build/device_build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/src/ops/hixl_kernel /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build/src/ops/hixl_kernel /home/drampool/nt/hixl/build/device_build/src/ops/hixl_kernel/CMakeFiles/cann_hixl_kernel.dir/DependInfo.cmake "--color=" cann_hixl_kernel
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/bin/gmake  -f src/ops/hixl_kernel/CMakeFiles/cann_hixl_kernel.dir/build.make src/ops/hixl_kernel/CMakeFiles/cann_hixl_kernel.dir/build
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Nothing to be done for 'src/ops/hixl_kernel/CMakeFiles/cann_hixl_kernel.dir/build'.
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+[ 70%] Built target cann_hixl_kernel
+/usr/bin/gmake  -f CMakeFiles/pack_aicpu_hixl.dir/build.make CMakeFiles/pack_aicpu_hixl.dir/depend
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+cd /home/drampool/nt/hixl/build/device_build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build/CMakeFiles/pack_aicpu_hixl.dir/DependInfo.cmake "--color=" pack_aicpu_hixl
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/bin/gmake  -f CMakeFiles/pack_aicpu_hixl.dir/build.make CMakeFiles/pack_aicpu_hixl.dir/build
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Nothing to be done for 'CMakeFiles/pack_aicpu_hixl.dir/build'.
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+[ 82%] Built target pack_aicpu_hixl
+/usr/bin/gmake  -f CMakeFiles/sign_cann_hixl_compat.dir/build.make CMakeFiles/sign_cann_hixl_compat.dir/depend
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+cd /home/drampool/nt/hixl/build/device_build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/cmake/device /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build /home/drampool/nt/hixl/build/device_build/CMakeFiles/sign_cann_hixl_compat.dir/DependInfo.cmake "--color=" sign_cann_hixl_compat
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/bin/gmake  -f CMakeFiles/sign_cann_hixl_compat.dir/build.make CMakeFiles/sign_cann_hixl_compat.dir/build
+gmake[5]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[5]: Nothing to be done for 'CMakeFiles/sign_cann_hixl_compat.dir/build'.
+gmake[5]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+[100%] Built target sign_cann_hixl_compat
+gmake[4]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_progress_start /home/drampool/nt/hixl/build/device_build/CMakeFiles 0
+gmake[3]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+[ 27%] Performing install step for 'device'
+cd /home/drampool/nt/hixl/build/device_build && /usr/bin/gmake install
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/hixl/CMakeFiles/cann_hixl.dir/build.make src/hixl/CMakeFiles/cann_hixl.dir/build
+gmake[3]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -S/home/drampool/nt/hixl/cmake/device -B/home/drampool/nt/hixl/build/device_build --check-build-system CMakeFiles/Makefile.cmake 0
+/usr/bin/gmake  -f CMakeFiles/Makefile2 preinstall
+gmake[4]: Entering directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+gmake[4]: Nothing to be done for 'preinstall'.
+gmake[4]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+Install the project...
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -P cmake_install.cmake
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/hixl/CMakeFiles/cann_hixl.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+-- Install configuration: "Release"
+-- Up-to-date: /home/drampool/nt/hixl/build/device_install/hixl/aicpu_kernel/libcann_hixl_kernel.json
+-- Up-to-date: /home/drampool/nt/hixl/build/device_install/lib/libcann_hixl_kernel.so
+-- Up-to-date: /home/drampool/nt/hixl/build/device_install/hixl/aicpu_kernel/cann-hixl-compat.tar.gz
+gmake[3]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build/device_build'
+[ 60%] Built target cann_hixl
+[ 61%] Completed 'device'
+/usr/bin/gmake  -f src/llm_datadist/CMakeFiles/llm_datadist.dir/build.make src/llm_datadist/CMakeFiles/llm_datadist.dir/depend
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E make_directory /home/drampool/nt/hixl/build/CMakeFiles
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E touch /home/drampool/nt/hixl/build/CMakeFiles/device-complete
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E touch /home/drampool/nt/hixl/build/device-prefix/src/device-stamp/device-done
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+[ 64%] Built target device
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/llm_datadist /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/llm_datadist /home/drampool/nt/hixl/build/src/llm_datadist/CMakeFiles/llm_datadist.dir/DependInfo.cmake "--color=" llm_datadist
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/llm_datadist/CMakeFiles/llm_datadist.dir/build.make src/llm_datadist/CMakeFiles/llm_datadist.dir/build
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/llm_datadist/CMakeFiles/llm_datadist.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+[ 98%] Built target llm_datadist
+/usr/bin/gmake  -f src/python/llm_wrapper/CMakeFiles/llm_datadist_wrapper.dir/build.make src/python/llm_wrapper/CMakeFiles/llm_datadist_wrapper.dir/depend
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/python/llm_wrapper /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/python/llm_wrapper /home/drampool/nt/hixl/build/src/python/llm_wrapper/CMakeFiles/llm_datadist_wrapper.dir/DependInfo.cmake "--color=" llm_datadist_wrapper
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/python/llm_wrapper/CMakeFiles/llm_datadist_wrapper.dir/build.make src/python/llm_wrapper/CMakeFiles/llm_datadist_wrapper.dir/build
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/python/llm_wrapper/CMakeFiles/llm_datadist_wrapper.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+[100%] Built target llm_datadist_wrapper
+/usr/bin/gmake  -f src/python/llm_datadist/CMakeFiles/llm_datadist_python.dir/build.make src/python/llm_datadist/CMakeFiles/llm_datadist_python.dir/depend
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+cd /home/drampool/nt/hixl/build && /usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_depends "Unix Makefiles" /home/drampool/nt/hixl /home/drampool/nt/hixl/src/python/llm_datadist /home/drampool/nt/hixl/build /home/drampool/nt/hixl/build/src/python/llm_datadist /home/drampool/nt/hixl/build/src/python/llm_datadist/CMakeFiles/llm_datadist_python.dir/DependInfo.cmake "--color=" llm_datadist_python
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/bin/gmake  -f src/python/llm_datadist/CMakeFiles/llm_datadist_python.dir/build.make src/python/llm_datadist/CMakeFiles/llm_datadist_python.dir/build
+gmake[2]: Entering directory '/home/codex_drampool_perf/nt/hixl/build'
+gmake[2]: Nothing to be done for 'src/python/llm_datadist/CMakeFiles/llm_datadist_python.dir/build'.
+gmake[2]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+[100%] Built target llm_datadist_python
+gmake[1]: Leaving directory '/home/codex_drampool_perf/nt/hixl/build'
+/usr/local/python3.12.13/lib/python3.12/site-packages/cmake/data/bin/cmake -E cmake_progress_start /home/drampool/nt/hixl/build/CMakeFiles 0
+[  0%] Built target infra_thread
+[  4%] Built target fmt
+[  4%] Built target storedetail
+[ 27%] Built target zlibstatic
+[ 29%] Built target kv_common
+[ 29%] Built target infra_template
+[ 29%] Built target infra_status
+[ 40%] Built target spdlog
+[ 44%] Built target infra_logger
+[ 46%] Built target offset_allocator
+[ 53%] Built target trans
+[ 55%] Linking CXX shared library libucm_p2p_transport.so
+[ 59%] Built target buffer_pool
+[ 70%] Built target ucm_p2p_transport
+[ 72%] Linking CXX shared library libdramstore.so
+[ 85%] Built target dramstore
+[ 97%] Built target drampool_core
+[100%] Linking CXX executable drampool
+[100%] Built target drampool

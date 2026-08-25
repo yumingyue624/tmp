@@ -1,0 +1,131 @@
+[
+    {
+        "Id": "sha256:611962961cde7e475e75b5391957e8afbcba6b9b0bcd4be9418fe17842de02ca",
+        "RepoTags": [
+            "quay.io/ascend/vllm-ascend:v0.23.0rc1-a3"
+        ],
+        "RepoDigests": [],
+        "Parent": "",
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-07-19T15:45:56.388421203Z",
+        "Container": "",
+        "ContainerConfig": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": null,
+            "Cmd": null,
+            "Image": "",
+            "Volumes": null,
+            "WorkingDir": "",
+            "Entrypoint": null,
+            "OnBuild": null,
+            "Labels": null
+        },
+        "DockerVersion": "",
+        "Author": "",
+        "Config": {
+            "Hostname": "",
+            "Domainname": "",
+            "User": "",
+            "AttachStdin": false,
+            "AttachStdout": false,
+            "AttachStderr": false,
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "PATH=/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/bin:/usr/local/Ascend/ascend-toolkit/latest/bin:/usr/local/Ascend/ascend-toolkit/latest/compiler/ccec_compiler/bin:/usr/local/Ascend/ascend-toolkit/latest/tools/ccec_compiler/bin:/usr/local/Ascend/cann-9.0.1/tools/show_kernel_debug_data:/usr/local/Ascend/cann-9.0.1/tools/msobjdump:/usr/local/Ascend/cann-9.0.1/bin:/usr/local/Ascend/cann-9.0.1/tools/ccec_compiler/bin:/usr/local/Ascend/cann-9.0.1/tools/profiler/bin:/usr/local/Ascend/cann-9.0.1/tools/ascend_system_advisor/asys:/usr/local/python3.12.13/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "LD_LIBRARY_PATH=/usr/local/Ascend/cann-9.0.1/lib64:/usr/local/Ascend/cann-9.0.1/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.0.1/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.0.1/opp/built-in/op_impl/ai_core/tbe/op_tiling:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/lib:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/examples:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/tests/atbopstest:/usr/local/Ascend/ascend-toolkit/latest/tools/aml/lib64:/usr/local/Ascend/ascend-toolkit/latest/tools/aml/lib64/plugin:/usr/local/Ascend/ascend-toolkit/latest/lib64:/usr/local/Ascend/ascend-toolkit/latest/lib64/plugin/opskernel:/usr/local/Ascend/ascend-toolkit/latest/lib64/plugin/nnengine:/usr/local/Ascend/ascend-toolkit/latest/opp/built-in/op_impl/ai_core/tbe/op_tiling:/usr/local/python3.12.13/lib:",
+                "ASCEND_TOOLKIT_HOME=/usr/local/Ascend/cann-9.0.1",
+                "ASCEND_TOOLKIT_LATEST_HOME=/usr/local/Ascend/ascend-toolkit/latest",
+                "PYTHONPATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages:/usr/local/Ascend/ascend-toolkit/latest/opp/built-in/op_impl/ai_core/tbe:/usr/local/Ascend/cann-9.0.1/python/site-packages:/usr/local/Ascend/cann-9.0.1/opp/built-in/op_impl/ai_core/tbe:",
+                "ASCEND_AICPU_PATH=/usr/local/Ascend/cann-9.0.1",
+                "ASCEND_OPP_PATH=/usr/local/Ascend/cann-9.0.1/opp",
+                "TOOLCHAIN_HOME=/usr/local/Ascend/cann-9.0.1/toolkit",
+                "ASCEND_HOME_PATH=/usr/local/Ascend/cann-9.0.1",
+                "CMAKE_PREFIX_PATH=/usr/local/Ascend/cann-9.0.1/toolkit/tools/tikicpulib/lib/cmake:/usr/local/Ascend/cann-9.0.1/lib64/cmake",
+                "ATB_HOME_PATH=/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1",
+                "ATB_STREAM_SYNC_EVERY_KERNEL_ENABLE=0",
+                "ATB_STREAM_SYNC_EVERY_RUNNER_ENABLE=0",
+                "ATB_STREAM_SYNC_EVERY_OPERATION_ENABLE=0",
+                "ATB_OPSRUNNER_KERNEL_CACHE_LOCAL_COUNT=1",
+                "ATB_OPSRUNNER_KERNEL_CACHE_GLOABL_COUNT=5",
+                "ATB_WORKSPACE_MEM_ALLOC_ALG_TYPE=1",
+                "ATB_COMPARE_TILING_EVERY_KERNEL=0",
+                "ATB_SHARE_MEMORY_NAME_SUFFIX=",
+                "ATB_MATMUL_SHUFFLE_K_ENABLE=1",
+                "LCCL_DETERMINISTIC=0",
+                "LCCL_PARALLEL=0",
+                "ATB_CXX_ABI=1",
+                "DEBIAN_FRONTEND=noninteractive",
+                "SOC_VERSION=ascend910_9391",
+                "TASK_QUEUE_ENABLE=1",
+                "OMP_NUM_THREADS=1"
+            ],
+            "Cmd": [
+                "/bin/bash"
+            ],
+            "ArgsEscaped": true,
+            "Image": "",
+            "Volumes": null,
+            "WorkingDir": "/workspace",
+            "Entrypoint": [
+                "/bin/bash",
+                "-c",
+                "    source /usr/local/Ascend/ascend-toolkit/set_env.sh &&     source /usr/local/Ascend/cann-9.0.1/share/info/ascendnpu-ir/bin/set_env.sh &&     source /usr/local/Ascend/nnal/atb/set_env.sh --cxx_abi=${ATB_CXX_ABI:-1}&&     exec \"$@\"",
+                "--"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "org.opencontainers.image.version": "22.04"
+            },
+            "Shell": [
+                "/bin/bash",
+                "-c"
+            ]
+        },
+        "Architecture": "arm64",
+        "Os": "linux",
+        "Size": 17226091009,
+        "VirtualSize": 17226091009,
+        "GraphDriver": {
+            "Data": {
+                "LowerDir": "/data01/docker/overlay2/9fbbb427ee6c2efe23f8a14d2069a4e3d5e5e7ccc75fa583932d2feebb46a750/diff:/data01/docker/overlay2/2b8b2c149d049e1cf6cd0847fe29955cbcd62a41f9cb7624796361d7dffbbeae/diff:/data01/docker/overlay2/f25a397a63529ad5bdce02d774f48a4c736556526b14564ff0a0b81c4a435f85/diff:/data01/docker/overlay2/919f2249476ae58d7083ddcbf4d92f277d1bc27293859207239491273232a60f/diff:/data01/docker/overlay2/6d22ed23f952ccbfabeb49ced67dc7b5436bc08dd0b14e694555e794de9c6e4a/diff:/data01/docker/overlay2/92b1d9d3d10e966b07442b71c33b519958d382a40eae6a0dbcc76378b3c01be2/diff:/data01/docker/overlay2/1d50738db6fe4196ac6892b9a8a3b591e8f947e232db3f35f67d0937c394844b/diff:/data01/docker/overlay2/79de228d6a164766e70a13e3cb176227f0012d8139a192e01b57b889991e1a14/diff:/data01/docker/overlay2/54a1525c4ec2b1d6925133289c3a2c6a966bd77ac23d1d806a378056c23b8fc5/diff:/data01/docker/overlay2/9e1d25ee125657f4e4a5cc8219a56292d257ad46798115d7c6aab3f8dd423464/diff:/data01/docker/overlay2/84424c3f4e7ad163d3abecf606abab8e32ba6ef4a2a89a10a46ec321c7abfa1b/diff:/data01/docker/overlay2/3ef4870e5afa114e9f1635d1870e84ca9195015a58aa85ad87e21003c53be3e9/diff:/data01/docker/overlay2/67f8d08e3c931576311b08790e0059e72fd14a9d770a7b08d049fc88d03a902c/diff:/data01/docker/overlay2/ddff49cdd838de8a3ead9a3c9f5cc8209b34d8b6ad4a87e944914c57b716557f/diff",
+                "MergedDir": "/data01/docker/overlay2/3e62b15114f04dc9eac14b45e9c36ae05dd56ec6de4c4674f05b93c33882a619/merged",
+                "UpperDir": "/data01/docker/overlay2/3e62b15114f04dc9eac14b45e9c36ae05dd56ec6de4c4674f05b93c33882a619/diff",
+                "WorkDir": "/data01/docker/overlay2/3e62b15114f04dc9eac14b45e9c36ae05dd56ec6de4c4674f05b93c33882a619/work"
+            },
+            "Name": "overlay2"
+        },
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:349cd24b7d434a8beb71a40f461c42b9f58e19b2637af5065f91bb019759cb91",
+                "sha256:69959c51ff622f0755d3bfd26c9d40dfb36475cc93cf15049bf1be7554218a11",
+                "sha256:7062672976e9eb5bcf4121750918ecdf3364ea0386b7f42251d96bf635c99fe9",
+                "sha256:e922eabf146e6139ccfd1a14388bd86791b03904a23f8f57c3d40a1ae6c4f750",
+                "sha256:c2d2f8b6ed158f6115aa18c34b149a6aa86a4fb3503034f5627e23f089ab4638",
+                "sha256:98db1e51d917dce8fc85b57d4aefda2e12d04d8c0c051834b3071dbfccf3b0b9",
+                "sha256:08578803413474b3f5f745b08583f2488fa9bada54ce913c0beb1dc7b30d52fd",
+                "sha256:31617e5199c2abf8a1975967bab6815f0f69c0cb57f6e29bc5faafd12aeaeacb",
+                "sha256:2425661b08a23c4d8b6ae7cefbfdb43bd455e707514a8eb5464abf80258152aa",
+                "sha256:47f1f0560dbbf0646be3668fbdb92da0b44988e0ff4eb9ed955ee38f6b39ee80",
+                "sha256:f09fbb8ae64518ef91bbd9c2222089092e70f1d1e59ebfab65831a72aff71f31",
+                "sha256:71630f9754e0b897c804d4381da0ce85020b745553d0a7390f7a3d9b90727b2b",
+                "sha256:0cecfe8bdfd586d07e97db81d275f8927c8a6f861d8f5792121cf4acf98b0e59",
+                "sha256:de4e82dbefa029799cc31d0dd040bfcd92ab20d882391bc1827ed99371dbf7e7",
+                "sha256:81189077c0f657b8b35cc7999db3893c3c58cea513cc1c3297d2ec37818e0592"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "0001-01-01T00:00:00Z"
+        }
+    }
+]

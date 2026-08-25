@@ -1,0 +1,16 @@
+## dram_pool...origin/dram_pool
+ M examples/drampool.yaml
+ M examples/offline_inference.py
+ M examples/ucm_config_example.yaml
+ M ucm/store/dram/cc/drampool/completion_poller.cc
+ M ucm/store/dram/cc/drampool/task_worker.cc
+ M ucm/store/test/e2e/scripts/run_drampool_e2e.sh
+MM ucm/transport/p2p/src/core/transport_manager.cpp
+MM ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+MM ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+?? bin/
+8c97c54 (HEAD -> dram_pool, origin/dram_pool) [test] transferasync metrics
+origin	https://github.com/ayaka836/unified-cache-management.git (fetch)
+origin	https://github.com/ayaka836/unified-cache-management.git (push)
+upstream	https://github.com/ModelEngine-Group/unified-cache-management.git (fetch)
+upstream	https://github.com/ModelEngine-Group/unified-cache-management.git (push)

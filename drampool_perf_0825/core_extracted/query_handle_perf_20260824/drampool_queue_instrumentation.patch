@@ -1,0 +1,44 @@
+diff --git a/ucm/store/dram/cc/drampool/completion_poller.cc b/ucm/store/dram/cc/drampool/completion_poller.cc
+index 56eb5dd..3ec6702 100644
+--- a/ucm/store/dram/cc/drampool/completion_poller.cc
++++ b/ucm/store/dram/cc/drampool/completion_poller.cc
+@@ -126,6 +126,17 @@ void CompletionPoller::FillPendingWindow()
+         CompletionRecord record;
+         if (!runtime_.completionQueue.TryPop(record)) { break; }
+         record.timing.poller_admitted_us = SteadyNowUs();
++        const auto pollerQueueUs =
++            record.timing.poller_admitted_us >= record.timing.completion_queued_us
++                ? record.timing.poller_admitted_us - record.timing.completion_queued_us
++                : 0;
++        if (pollerQueueUs >= 400) {
++            UC_INFO(
++                "[DRAMPOOL_QUEUE_PERF] layer=poller_queue request_id={} opcode={} peer={} "
++                "wait_us={} pending_size={} pending_depth={} threshold_us=400",
++                record.request_id, static_cast<int>(record.opcode), record.peer_one_sided_id,
++                pollerQueueUs, pending_.size(), g_config.pollerPendingDepth);
++        }
+         // Stage PERF log disabled: request_done already contains the corresponding timing.
+         // UC_INFO(
+         //     "[PERF] component=drampool event=stage request_id={} opcode={} "
+diff --git a/ucm/store/dram/cc/drampool/task_worker.cc b/ucm/store/dram/cc/drampool/task_worker.cc
+index 36a615e..ef62c06 100644
+--- a/ucm/store/dram/cc/drampool/task_worker.cc
++++ b/ucm/store/dram/cc/drampool/task_worker.cc
+@@ -73,6 +73,17 @@ Status TaskWorker::ProcessOneRequest(RequestTaskPtr task)
+              request->request_id, static_cast<int>(request->opcode), peerOneSidedId);
+     task->timing.worker_started_us = SteadyNowUs();
+     task->timing.worker_started_ts_us = UnixNowUs();
++    const auto requestQueueUs =
++        task->timing.worker_started_us >= task->timing.received_us
++            ? task->timing.worker_started_us - task->timing.received_us
++            : 0;
++    if (requestQueueUs >= 400) {
++        UC_INFO(
++            "[DRAMPOOL_QUEUE_PERF] layer=request_queue request_id={} opcode={} peer={} "
++            "wait_us={} threshold_us=400",
++            request->request_id, static_cast<int>(request->opcode), peerOneSidedId,
++            requestQueueUs);
++    }
+     // Stage PERF log disabled: request_done already contains the corresponding timing.
+     // UC_INFO(
+     //     "[PERF] component=drampool event=stage request_id={} opcode={} peer={} "

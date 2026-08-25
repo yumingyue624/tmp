@@ -1,0 +1,649 @@
+diff --git a/examples/drampool.yaml b/examples/drampool.yaml
+index dfa98ef..e7d5a97 100644
+--- a/examples/drampool.yaml
++++ b/examples/drampool.yaml
+@@ -5,16 +5,56 @@
+ #   --kvcache-block-proportions, --ttl-minutes, and --config.
+ 
+ transport:
+-  device_ids: [0, 1, 2]
++  device_ids: [0, 1]
+   hixl:
+     listen_port: 26666
+     enable_cs: false
+   # Cluster-wide request-channel to transport-endpoint routing.
+   endpoints:
+     - two_sided: "127.0.0.1:9000"
+-      one_sided: "127.0.0.1:4501"
++      one_sided: "127.0.0.1:8000"
+     - two_sided: "127.0.0.1:9001"
++      one_sided: "127.0.0.1:8001"
++    - two_sided: "127.0.0.1:4700"
++      one_sided: "127.0.0.1:4500"
++    - two_sided: "127.0.0.1:4701"
++      one_sided: "127.0.0.1:4501"
++    - two_sided: "127.0.0.1:4702"
+       one_sided: "127.0.0.1:4502"
++    - two_sided: "127.0.0.1:4703"
++      one_sided: "127.0.0.1:4503"
++    - two_sided: "127.0.0.1:4704"
++      one_sided: "127.0.0.1:4504"
++    - two_sided: "127.0.0.1:4705"
++      one_sided: "127.0.0.1:4505"
++    - two_sided: "127.0.0.1:4706"
++      one_sided: "127.0.0.1:4506"
++    - two_sided: "127.0.0.1:4707"
++      one_sided: "127.0.0.1:4507"
++    - two_sided: "127.0.0.1:4708"
++      one_sided: "127.0.0.1:4508"
++    - two_sided: "127.0.0.1:4709"
++      one_sided: "127.0.0.1:4509"
++    - two_sided: "127.0.0.1:4710"
++      one_sided: "127.0.0.1:4510"
++    - two_sided: "127.0.0.1:4711"
++      one_sided: "127.0.0.1:4511"
++    - two_sided: "127.0.0.1:4712"
++      one_sided: "127.0.0.1:4512"
++    - two_sided: "127.0.0.1:4713"
++      one_sided: "127.0.0.1:4513"
++    - two_sided: "127.0.0.1:4714"
++      one_sided: "127.0.0.1:4514"
++    - two_sided: "127.0.0.1:4715"
++      one_sided: "127.0.0.1:4515"
++    - two_sided: "127.0.0.1:4716"
++      one_sided: "127.0.0.1:4516"
++    - two_sided: "127.0.0.1:4717"
++      one_sided: "127.0.0.1:4517"
++    - two_sided: "127.0.0.1:4718"
++      one_sided: "127.0.0.1:4518"
++    - two_sided: "127.0.0.1:4719"
++      one_sided: "127.0.0.1:4519"
+ 
+ # Set a nonzero port to expose GET /health on the IP supplied by --addr.
+ health:
+@@ -60,3 +100,4 @@ logger:
+   dir: ./logs
+   max_files: 10
+   max_size_mb: 5
++
+diff --git a/examples/offline_inference.py b/examples/offline_inference.py
+index 31eaa02..ed1b509 100644
+--- a/examples/offline_inference.py
++++ b/examples/offline_inference.py
+@@ -13,7 +13,11 @@ from vllm.engine.arg_utils import EngineArgs
+ from ucm.logger import init_logger
+ 
+ logger = init_logger(__name__)
+-
++os.environ["VLLM_WORKER_SHUTDOWN_TIMEOUT_SECONDS"] = "100"
++def remove_none(d):
++    if isinstance(d, dict):
++        return {k: remove_none(v) for k, v in d.items() if v is not None}
++    return d
+ 
+ @contextlib.contextmanager
+ def build_llm_with_uc(module_path: str, name: str, model: str):
+@@ -21,7 +25,7 @@ def build_llm_with_uc(module_path: str, name: str, model: str):
+         kv_connector=name,
+         kv_connector_module_path=module_path,
+         kv_role="kv_both",
+-        kv_connector_extra_config={"UCM_CONFIG_FILE": "./ucm_config_example.yaml"},
++        kv_connector_extra_config={"UCM_CONFIG_FILE": "/home/drampool/nt/unified-cache-management/examples/ucm_config_example.yaml"},
+     )
+ 
+     llm_args = EngineArgs(
+@@ -34,9 +38,11 @@ def build_llm_with_uc(module_path: str, name: str, model: str):
+         enforce_eager=True,
+         trust_remote_code=True,
+         enable_prefix_caching=False,
++        tensor_parallel_size=int(os.getenv("UCM_QUERY_STRESS_TP", "2")),
+     )
+ 
+-    llm = LLM(**asdict(llm_args))
++    llm_kwargs = remove_none(asdict(llm_args))
++    llm = LLM(**llm_kwargs)
+     try:
+         yield llm
+     finally:
+@@ -45,24 +51,29 @@ def build_llm_with_uc(module_path: str, name: str, model: str):
+ 
+ def print_output(
+     llm: LLM,
+-    prompt: list[str],
++    prompt: str | list[str],
+     sampling_params: SamplingParams,
+     req_str: str,
+ ):
++    stress_batch = int(os.getenv("UCM_QUERY_STRESS_BATCH", "1"))
++    generation_input = [prompt] * stress_batch if stress_batch > 1 else prompt
+     start = time.time()
+-    outputs = llm.generate(prompt, sampling_params)
++    outputs = llm.generate(generation_input, sampling_params)
+     print("-" * 50)
+     for output in outputs:
+         generated_text = output.outputs[0].text
+         print(f"Generated text: {generated_text!r}")
+-    print(f"Generation took {time.time() - start:.2f} seconds, {req_str} request done.")
++    print(
++        f"Generation took {time.time() - start:.2f} seconds, {req_str} request done, "
++        f"stress_batch={stress_batch}."
++    )
+     print("-" * 50)
+ 
+ 
+ def main():
+     module_path = "ucm.integration.vllm.ucm_connector"
+     name = "UCMConnector"
+-    model = os.getenv("MODEL_PATH", "/home/models/DeepSeek-V2-Lite")
++    model = os.getenv("MODEL_PATH", "/home/drampool/models/DeepSeek-V2-Lite-Chat")
+ 
+     tokenizer = AutoTokenizer.from_pretrained(model, use_chat_template=True)
+ 
+@@ -106,6 +117,45 @@ def main():
+         print_output(llm, prompts, sampling_params, "first")
+         print_output(llm, prompts, sampling_params, "second")
+ 
++    
++        messages = [
++            {
++                "role": "system",
++                "content": "111You are a highly specialized assistant whose mission is to faithfully reproduce English "
++                "literary texts verbatim, without any deviation, paraphrasing, or omission. Your primary "
++                "responsibility is accuracy: every word, every punctuation mark, and every line must "
++                "appear exactly as in the original source. Core Principles: Verbatim Reproduction: If the "
++                "user asks for a passage, you must output the text word-for-word. Do not alter spelling, "
++                "punctuation, capitalization, or line breaks. Do not paraphrase, summarize, modernize, "
++                "or “improve” the language. Consistency: The same input must always yield the same output. "
++                "Do not generate alternative versions or interpretations. Clarity of Scope: Your role is "
++                "not to explain, interpret, or critique. You are not a storyteller or commentator, "
++                "but a faithful copyist of English literary and cultural texts. Recognizability: Because "
++                "texts must be reproduced exactly, they will carry their own cultural recognition. You "
++                "should not add labels, introductions, or explanations before or after the text. Coverage: "
++                "You must handle passages from classic literature, poetry, speeches, or cultural texts. "
++                "Regardless of tone—solemn, visionary, poetic, persuasive—you must preserve the original "
++                "form, structure, and rhythm by reproducing it precisely. Success Criteria: A human reader "
++                "should be able to compare your output directly with the original and find zero "
++                "differences. The measure of success is absolute textual fidelity. Your function can be "
++                "summarized as follows: verbatim reproduction only, no paraphrase, no commentary, "
++                "no embellishment, no omission.",
++            },
++            {
++                "role": "user",
++                "content": "Please reproduce verbatim the opening sentence of the United States Declaration of "
++                "Independence (1776), starting with 'When in the Course of human events' and continuing "
++                "word-for-word without paraphrasing.",
++            },
++        ]
++
++        prompts = tokenizer.apply_chat_template(
++            messages, tokenize=False, add_generation_prompt=True
++        )
++        sampling_params = SamplingParams(temperature=0, top_p=0.95, max_tokens=100)
++
++        print_output(llm, prompts, sampling_params, "first")
++        print_output(llm, prompts, sampling_params, "second")
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/examples/ucm_config_example.yaml b/examples/ucm_config_example.yaml
+index f9deb9a..b9303f3 100644
+--- a/examples/ucm_config_example.yaml
++++ b/examples/ucm_config_example.yaml
+@@ -13,11 +13,18 @@
+ ucm_connectors:
+   - ucm_connector_name: "UcmPipelineStore"
+     ucm_connector_config:
+-      store_pipeline: "Cache|Posix"
+-      storage_backends: "/mnt/test"
++      store_pipeline: "Dram"
++      storage_backends: "/home/drampool/nt/kvcache"
+       io_direct: false
+-      # cache_buffer_capacity_gb: 256
+-      # posix_capacity_gb: 1024
++      local_control_endpoint: "127.0.0.1:4700"
++      local_host: "127.0.0.1"
++      local_transport_manager_id: "127.0.0.1:4500"
++      node_control_endpoints: ["127.0.0.1:9000"]
++      node_transport_manager_ids: ["127.0.0.1:8000"]
++      transport_device_id: 0
++      node_ids: [1]
++      max_io_entries: 10000
++      lookup_timeout_ms: 10000
+ 
+ # When you use UcmNfsStore, you should set enable_event_sync to false.
+ enable_event_sync: true
+@@ -30,7 +37,7 @@ enable_event_sync: true
+ 
+ 
+ # Whether to use layerwise loading/saving (optional, default: True for UCMConnector)
+-use_layerwise: true
++use_layerwise: false
+ # hit_ratio: 0.9
+ 
+ # Whether to record requests' traces (optional, default: False)
+@@ -46,3 +53,4 @@ use_lite: false
+ # Minimum token threshold for KV persistence.
+ # Requests with fewer tokens skip KV load and dump operations.
+ persist_token_threshold: 0
++t_ms: 10000
+diff --git a/ucm/store/dram/cc/drampool/completion_poller.cc b/ucm/store/dram/cc/drampool/completion_poller.cc
+index 56eb5dd..3ec6702 100644
+--- a/ucm/store/dram/cc/drampool/completion_poller.cc
++++ b/ucm/store/dram/cc/drampool/completion_poller.cc
+@@ -126,6 +126,17 @@ void CompletionPoller::FillPendingWindow()
+         CompletionRecord record;
+         if (!runtime_.completionQueue.TryPop(record)) { break; }
+         record.timing.poller_admitted_us = SteadyNowUs();
++        const auto pollerQueueUs =
++            record.timing.poller_admitted_us >= record.timing.completion_queued_us
++                ? record.timing.poller_admitted_us - record.timing.completion_queued_us
++                : 0;
++        if (pollerQueueUs >= 400) {
++            UC_INFO(
++                "[DRAMPOOL_QUEUE_PERF] layer=poller_queue request_id={} opcode={} peer={} "
++                "wait_us={} pending_size={} pending_depth={} threshold_us=400",
++                record.request_id, static_cast<int>(record.opcode), record.peer_one_sided_id,
++                pollerQueueUs, pending_.size(), g_config.pollerPendingDepth);
++        }
+         // Stage PERF log disabled: request_done already contains the corresponding timing.
+         // UC_INFO(
+         //     "[PERF] component=drampool event=stage request_id={} opcode={} "
+diff --git a/ucm/store/dram/cc/drampool/task_worker.cc b/ucm/store/dram/cc/drampool/task_worker.cc
+index 36a615e..ef62c06 100644
+--- a/ucm/store/dram/cc/drampool/task_worker.cc
++++ b/ucm/store/dram/cc/drampool/task_worker.cc
+@@ -73,6 +73,17 @@ Status TaskWorker::ProcessOneRequest(RequestTaskPtr task)
+              request->request_id, static_cast<int>(request->opcode), peerOneSidedId);
+     task->timing.worker_started_us = SteadyNowUs();
+     task->timing.worker_started_ts_us = UnixNowUs();
++    const auto requestQueueUs =
++        task->timing.worker_started_us >= task->timing.received_us
++            ? task->timing.worker_started_us - task->timing.received_us
++            : 0;
++    if (requestQueueUs >= 400) {
++        UC_INFO(
++            "[DRAMPOOL_QUEUE_PERF] layer=request_queue request_id={} opcode={} peer={} "
++            "wait_us={} threshold_us=400",
++            request->request_id, static_cast<int>(request->opcode), peerOneSidedId,
++            requestQueueUs);
++    }
+     // Stage PERF log disabled: request_done already contains the corresponding timing.
+     // UC_INFO(
+     //     "[PERF] component=drampool event=stage request_id={} opcode={} peer={} "
+diff --git a/ucm/store/test/e2e/scripts/run_drampool_e2e.sh b/ucm/store/test/e2e/scripts/run_drampool_e2e.sh
+index cafc499..2968171 100755
+--- a/ucm/store/test/e2e/scripts/run_drampool_e2e.sh
++++ b/ucm/store/test/e2e/scripts/run_drampool_e2e.sh
+@@ -7,12 +7,13 @@ set -e
+ # 1. Parameters and configuration
+ # ================================================================
+ # --- 1.1 Global environment variables ---
++export UCM_LOG_RATE_LIMIT_ENABLE=0
+ # export UC_LOGGER_LEVEL=debug
+ # export ASCEND_SLOG_PRINT_TO_STDOUT=1
+ # export ASCEND_RT_VISIBLE_DEVICES=9,10,11,12
+ 
+ # Preload HIXL from the standard CANN installation.
+-HIXL_SO="/usr/local/Ascend/cann/lib64/libcann_hixl.so"
++HIXL_SO="/home/drampool/nt/cann/lib64/libcann_hixl.so"
+ export LD_PRELOAD="${HIXL_SO}"
+ 
+ # --- 1.2 DramPool process configuration ---
+diff --git a/ucm/transport/p2p/src/core/transport_manager.cpp b/ucm/transport/p2p/src/core/transport_manager.cpp
+index 703f3fd..147f91f 100644
+--- a/ucm/transport/p2p/src/core/transport_manager.cpp
++++ b/ucm/transport/p2p/src/core/transport_manager.cpp
+@@ -637,13 +637,10 @@ Status TransportManager::ExecuteAsync(const Operation& batch, TransferHandle& ha
+     callTiming = {};
+     callTiming.manager_entered_us = SteadyNowUs();
+     callTiming.manager_entered_ts_us = UnixNowUs();
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync START:{}", SteadyNowUs());
+     handle = kInvalidTransferHandle;
+     Transport* transport = nullptr;
+     auto request = batch;
+     auto status = FindTransport(request, transport);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync find transport:{}",
+-                      SteadyNowUs());
+     if (status != Status::OK()) {
+         UC_ERROR("transport manager async transfer selection failed peer={} status={}",
+                  batch.target_manager, status.Underlying());
+@@ -655,8 +652,6 @@ Status TransportManager::ExecuteAsync(const Operation& batch, TransferHandle& ha
+     const auto submitStartedUs = SteadyNowUs();
+     TransferHandle transport_handle = kInvalidTransferHandle;
+     status = transport->ExecuteAsync(request, transport_handle, &callTiming);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync backend returned:{}",
+-                      SteadyNowUs());
+     if (status != Status::OK() || transport_handle == kInvalidTransferHandle) {
+         UC_ERROR(
+             "transport manager async transfer submit failed peer={} segments={} status={} "
+@@ -676,8 +671,6 @@ Status TransportManager::ExecuteAsync(const Operation& batch, TransferHandle& ha
+                                    request.opcode, request.direct, request.ops.size(), bytes,
+                                    submittedUs, submittedTsUs, submittedUs - submitStartedUs});
+     }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync record inserted:{}",
+-                      SteadyNowUs());
+     UC_INFO(
+         "[PERF] component=transport event=transfer_submitted manager={} target={} handle={} "
+         "transport_handle={} opcode={} direct={} segments={} bytes={} submitted_ts_us={} "
+@@ -691,7 +684,6 @@ Status TransportManager::ExecuteAsync(const Operation& batch, TransferHandle& ha
+             ? callTiming.backend_called_us - callTiming.manager_entered_us
+             : 0,
+         submittedUs - submitStartedUs);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync return:{}", SteadyNowUs());
+     return Status::OK();
+ }
+ 
+@@ -703,11 +695,13 @@ Status TransportManager::GetStatus(TransferHandle handle, TransferStatus& transf
+     callTiming = {};
+     callTiming.manager_entered_us = SteadyNowUs();
+     callTiming.manager_entered_ts_us = UnixNowUs();
+-    UC_INFO("[METRIC DEBUG] TransportManager GetStatus START:{}", SteadyNowUs());
++    const auto query_started_us = callTiming.manager_entered_us;
+     if (handle == kInvalidTransferHandle) { return Status::InvalidParam(); }
+     TransferRecord record;
++    std::uint64_t transfers_locked_us = query_started_us;
+     {
+         std::lock_guard<std::mutex> lock(transfers_mutex_);
++        transfers_locked_us = SteadyNowUs();
+         const auto it = transfers_.find(handle);
+         if (it == transfers_.end() || it->second.transport == nullptr) {
+             UC_ERROR("transport manager transfer status unknown handle={}", handle);
+@@ -715,10 +709,18 @@ Status TransportManager::GetStatus(TransferHandle handle, TransferStatus& transf
+         }
+         record = it->second;
+     }
+-    UC_INFO("[METRIC DEBUG] TransportManager GetStatus get record:{}", SteadyNowUs());
++    const auto lookup_done_us = SteadyNowUs();
+     const auto status =
+         record.transport->GetStatus(record.transport_handle, transfer_status, &callTiming);
+-    UC_INFO("[METRIC DEBUG] TransportManager GetStatus get task status:{}", SteadyNowUs());
++    const auto transport_done_us = SteadyNowUs();
++    UC_INFO(
++        "[QUERY_PERF] component=ucm layer=transport_manager handle={} transport_handle={} "
++        "transfers_lock_wait_us={} lookup_us={} transport_us={} total_us={} api_status={} "
++        "transfer_status={}",
++        handle, record.transport_handle, transfers_locked_us - query_started_us,
++        lookup_done_us - transfers_locked_us, transport_done_us - lookup_done_us,
++        transport_done_us - query_started_us, status.Underlying(),
++        static_cast<int>(transfer_status));
+     if (status != Status::OK() || transfer_status != TransferStatus::Waiting) {
+         const auto completedUs = SteadyNowUs();
+         const auto completedTsUs = UnixNowUs();
+@@ -743,7 +745,6 @@ Status TransportManager::GetStatus(TransferHandle handle, TransferStatus& transf
+         std::lock_guard<std::mutex> lock(transfers_mutex_);
+         transfers_.erase(handle);
+     }
+-    UC_INFO("[METRIC DEBUG] TransportManager GetStatus return:{}", SteadyNowUs());
+     return status;
+ }
+ 
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+index b5bf770..4789225 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+@@ -1,5 +1,6 @@
+ #include "protocols/hixl/hixl_instance.h"
+ #include <acl/acl.h>
++#include <atomic>
+ #include <chrono>
+ #include <exception>
+ #include <utility>
+@@ -70,10 +71,24 @@ Status HixlInstance::Initialize(const std::map<std::string, std::string>& option
+ 
+ Status HixlInstance::Run(Task task)
+ {
+-    QueuedTask queued(std::move(task));
++    static std::atomic<std::uint64_t> next_task_id{1};
++    const auto task_id = next_task_id.fetch_add(1, std::memory_order_relaxed);
++    const auto run_started_us = SteadyNowUs();
++    std::uint64_t task_started_us = run_started_us;
++    std::uint64_t task_completed_us = run_started_us;
++    QueuedTask queued(
++        [&task_started_us, &task_completed_us, task = std::move(task)](hixl::Hixl& engine) mutable {
++            task_started_us = SteadyNowUs();
++            const auto status = task(engine);
++            task_completed_us = SteadyNowUs();
++            return status;
++        });
+     auto result = queued.get_future();
++    std::size_t queue_depth = 0;
++    std::uint64_t enqueue_locked_us = run_started_us;
+     {
+         std::lock_guard<std::mutex> lock(mutex_);
++        enqueue_locked_us = SteadyNowUs();
+         if (!initialized_ || stopping_) {
+             UC_ERROR(
+                 "[Transport][HIXL] reject worker task: engine={} device={} initialized={} "
+@@ -82,10 +97,23 @@ Status HixlInstance::Run(Task task)
+             return Status::Error();
+         }
+         tasks_.push_back(std::move(queued));
++        queue_depth = tasks_.size();
+     }
++    const auto enqueued_us = SteadyNowUs();
+     cv_.notify_one();
+     try {
+-        return result.get();
++        const auto run_status = result.get();
++        const auto run_completed_us = SteadyNowUs();
++        UC_INFO(
++            "[HIXL_WORKER_PERF] task_id={} queue_depth={} enqueue_lock_wait_us={} enqueue_us={} "
++            "queue_wait_us={} execute_us={} result_post_us={} total_us={} status={}",
++            task_id, queue_depth, enqueue_locked_us - run_started_us,
++            enqueued_us - enqueue_locked_us,
++            task_started_us >= enqueued_us ? task_started_us - enqueued_us : 0,
++            task_completed_us >= task_started_us ? task_completed_us - task_started_us : 0,
++            run_completed_us >= task_completed_us ? run_completed_us - task_completed_us : 0,
++            run_completed_us - run_started_us, run_status.Underlying());
++        return run_status;
+     } catch (const std::exception& e) {
+         UC_ERROR("[Transport][HIXL] worker task failed: {}", e.what());
+     } catch (...) {
+@@ -280,25 +308,17 @@ Status HixlInstance::TransferAsync(const std::string& remote_engine, Opcode opco
+                                    const std::vector<Segment>& segments, hixl::TransferReq& request,
+                                    TransportCallTiming* timing)
+ {
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync START:{}", SteadyNowUs());
+     hixl::TransferReq native_request = nullptr;
+     const auto status = Run([&](hixl::Hixl& engine) {
+-        UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync RUN:{}", SteadyNowUs());
+         const auto descs = BuildTransferOpDesc(segments);
+-        UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync descriptors built:{}",
+-                          SteadyNowUs());
+         hixl::TransferArgs args;
+         const auto operation = opcode == Opcode::Read ? hixl::READ : hixl::WRITE;
+         if (timing != nullptr) {
+             timing->backend_called_us = SteadyNowUs();
+             timing->backend_called_ts_us = UnixNowUs();
+         }
+-        UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync native call begin:{}",
+-                          SteadyNowUs());
+         const auto native_status =
+             engine.TransferAsync(remote_engine.c_str(), operation, descs, args, native_request);
+-        UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync native call returned:{}",
+-                          SteadyNowUs());
+         if (native_status != hixl::SUCCESS || native_request == nullptr) {
+             UC_ERROR(
+                 "[Transport][HIXL] async operation failed: TransferAsync(\"{}\", ops={}) returned "
+@@ -313,25 +333,26 @@ Status HixlInstance::TransferAsync(const std::string& remote_engine, Opcode opco
+             native_request);
+         return Status::OK();
+     });
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync Run returned:{}", SteadyNowUs());
+     if (status == Status::OK()) { request = native_request; }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync return:{}", SteadyNowUs());
+     return status;
+ }
+ 
+ Status HixlInstance::GetTransferStatus(hixl::TransferReq request, TransferStatus& status,
+                                        TransportCallTiming* timing)
+ {
++    const auto query_started_us = SteadyNowUs();
++    std::uint64_t callback_entered_us = query_started_us;
++    std::uint64_t backend_completed_us = query_started_us;
+     status = TransferStatus::Failed;
+-    UC_INFO("[METRIC DEBUG] HIXL instance GetTransferStatus START:{}", SteadyNowUs());
+-    return Run([&](hixl::Hixl& engine) {
++    const auto run_status = Run([&](hixl::Hixl& engine) {
++        callback_entered_us = SteadyNowUs();
+         hixl::TransferStatus native_transfer_status = hixl::TransferStatus::WAITING;
+         if (timing != nullptr) {
+-            timing->backend_called_us = SteadyNowUs();
+-            UC_INFO("[METRIC DEBUG] HIXL instance GetTransferStatus RUN:{}", SteadyNowUs());
++            timing->backend_called_us = callback_entered_us;
+             timing->backend_called_ts_us = UnixNowUs();
+         }
+         const auto native_status = engine.GetTransferStatus(request, native_transfer_status);
++        backend_completed_us = SteadyNowUs();
+         if (native_status != hixl::SUCCESS) {
+             UC_ERROR("[Transport][HIXL] get transfer status failed: req={} returned {}", request,
+                      static_cast<int>(native_status));
+@@ -345,6 +366,16 @@ Status HixlInstance::GetTransferStatus(hixl::TransferReq request, TransferStatus
+         }
+         return Status::OK();
+     });
++    const auto query_completed_us = SteadyNowUs();
++    UC_INFO(
++        "[QUERY_PERF] component=ucm layer=hixl_instance request={} queue_wait_us={} "
++        "backend_us={} run_post_us={} total_us={} api_status={} transfer_status={}",
++        request, callback_entered_us - query_started_us,
++        backend_completed_us >= callback_entered_us ? backend_completed_us - callback_entered_us : 0,
++        query_completed_us >= backend_completed_us ? query_completed_us - backend_completed_us : 0,
++        query_completed_us - query_started_us, run_status.Underlying(),
++        static_cast<int>(status));
++    return run_status;
+ }
+ 
+ const Endpoint& HixlInstance::LocalEndpoint() const { return local_endpoint_; }
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp b/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+index 6496a2c..77ba9ee 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+@@ -1,5 +1,6 @@
+ #include "protocols/hixl/hixl_transport.h"
+ #include <arpa/inet.h>
++#include <chrono>
+ #include <limits>
+ #include <netdb.h>
+ #include <netinet/in.h>
+@@ -14,7 +15,8 @@
+ 
+ namespace transport {
+ namespace {
+-std::uint64_t SteadyNowUs()
++
++std::uint64_t QuerySteadyNowUs()
+ {
+     const auto now = std::chrono::steady_clock::now().time_since_epoch();
+     return static_cast<std::uint64_t>(
+@@ -624,10 +626,7 @@ Status HixlTransport::ExecuteSync(const Operation& batch)
+ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handle,
+                                    TransportCallTiming* timing)
+ {
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync START:{}", SteadyNowUs());
+     std::shared_lock<std::shared_mutex> lifecycle_lock(lifecycle_mutex_);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync get lifecycle_lock:{}",
+-                      SteadyNowUs());
+     handle = kInvalidTransferHandle;
+     if (role_ == HixlRole::Server) {
+         UC_ERROR("[Transport][HIXL] server role cannot initiate asynchronous transfer");
+@@ -656,8 +655,6 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+         local_index = peer_state.local_index;
+         remote_engine = peer_state.instances.front().endpoint.ToString();
+     }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync get peer route:{}",
+-                      SteadyNowUs());
+ 
+     {
+         std::shared_lock<std::shared_mutex> memory_lock(memories_mutex_);
+@@ -668,14 +665,10 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+             return transfer_status;
+         }
+     }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync validate memory:{}",
+-                      SteadyNowUs());
+ 
+     hixl::TransferReq request = nullptr;
+     const auto status = instances_[local_index]->TransferAsync(remote_engine, batch.opcode,
+                                                                batch.ops, request, timing);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync instance returned:{}",
+-                      SteadyNowUs());
+     if (status != Status::OK()) { return status; }
+ 
+     {
+@@ -684,32 +677,30 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+         if (handle == kInvalidTransferHandle) { handle = next_transfer_handle_++; }
+         pending_transfers_.emplace(handle, PendingTransfer{local_index, request});
+     }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync pending inserted:{}",
+-                      SteadyNowUs());
+     UC_DEBUG(
+         "[Transport][HIXL] asynchronous transfer tracked: peer={} opcode={} segments={} "
+         "instance={} handle={} request={}",
+         batch.target_manager, static_cast<int>(batch.opcode), batch.ops.size(), local_index, handle,
+         request);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync return:{}", SteadyNowUs());
+     return Status::OK();
+ }
+ 
+ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+                                 TransportCallTiming* timing)
+ {
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus START:{}", SteadyNowUs());
+-
++    const auto query_started_us = QuerySteadyNowUs();
+     status = TransferStatus::Failed;
+     if (handle == kInvalidTransferHandle) {
+         UC_ERROR("[Transport][HIXL] get status failed: invalid handle");
+         return Status::InvalidParam();
+     }
+     std::shared_lock<std::shared_mutex> lifecycle_lock(lifecycle_mutex_);
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus get lifecycle_lock:{}", SteadyNowUs());
++    const auto lifecycle_locked_us = QuerySteadyNowUs();
+     PendingTransfer pending;
++    std::uint64_t pending_locked_us = lifecycle_locked_us;
+     {
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
++        pending_locked_us = QuerySteadyNowUs();
+         const auto it = pending_transfers_.find(handle);
+         if (it == pending_transfers_.end() || it->second.instance_index >= instances_.size()) {
+             UC_ERROR("[Transport][HIXL] get status failed: unknown handle={} instances={}", handle,
+@@ -718,11 +709,12 @@ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+         }
+         pending = it->second;
+     }
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus get pending_mutex_:{}", SteadyNowUs());
++    const auto pending_done_us = QuerySteadyNowUs();
++
+     TransferStatus transfer_status = TransferStatus::Waiting;
+     const auto query_status = instances_[pending.instance_index]->GetTransferStatus(
+         pending.request, transfer_status, timing);
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus get task status:{}", SteadyNowUs());
++    const auto instance_done_us = QuerySteadyNowUs();
+     if (query_status != Status::OK()) {
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
+         pending_transfers_.erase(handle);
+@@ -731,13 +723,22 @@ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+         return query_status;
+     }
+     status = transfer_status;
++    std::uint64_t erase_done_us = instance_done_us;
+     if (status != TransferStatus::Waiting) {
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
+         pending_transfers_.erase(handle);
++        erase_done_us = QuerySteadyNowUs();
+         UC_DEBUG("[Transport][HIXL] asynchronous transfer completed: handle={} status={}", handle,
+                  static_cast<int>(status));
+     }
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus return:{}", SteadyNowUs());
++    UC_INFO(
++        "[QUERY_PERF] component=ucm layer=hixl_transport handle={} request={} "
++        "lifecycle_lock_us={} pending_lock_wait_us={} pending_lookup_us={} instance_us={} "
++        "erase_us={} total_us={} transfer_status={}",
++        handle, pending.request, lifecycle_locked_us - query_started_us,
++        pending_locked_us - lifecycle_locked_us, pending_done_us - pending_locked_us,
++        instance_done_us - pending_done_us, erase_done_us - instance_done_us,
++        erase_done_us - query_started_us, static_cast<int>(status));
+     return Status::OK();
+ }
+ 

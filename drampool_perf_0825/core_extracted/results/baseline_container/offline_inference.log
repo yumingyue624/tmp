@@ -1,0 +1,16 @@
+INFO 08-24 19:17:59 [__init__.py:44] Available plugins for group vllm.platform_plugins:
+INFO 08-24 19:17:59 [__init__.py:46] - ascend -> vllm_ascend:register
+INFO 08-24 19:17:59 [__init__.py:49] All plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to load.
+INFO 08-24 19:18:00 [__init__.py:238] Platform plugin ascend is activated
+INFO 08-24 19:18:00 [platform.py:62] Breakable cudagraph is force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported yet.
+Traceback (most recent call last):
+  File "/home/codex_drampool_perf/nt/unified-cache-management/examples/offline_inference.py", line 13, in <module>
+    from ucm.logger import init_logger
+  File "/home/codex_drampool_perf/nt/unified-cache-management/ucm/__init__.py", line 25, in <module>
+    from ucm.integration.vllm.patch.logger_patch import patch_logger
+  File "/home/codex_drampool_perf/nt/unified-cache-management/ucm/integration/vllm/patch/logger_patch.py", line 1, in <module>
+    from ucm.integration.vllm.patch.utils import patch_or_inject, when_imported
+  File "/home/codex_drampool_perf/nt/unified-cache-management/ucm/integration/vllm/patch/utils.py", line 6, in <module>
+    import wrapt
+ModuleNotFoundError: No module named 'wrapt'
+[ERROR] 2026-08-24-19:18:04 (PID:594, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception

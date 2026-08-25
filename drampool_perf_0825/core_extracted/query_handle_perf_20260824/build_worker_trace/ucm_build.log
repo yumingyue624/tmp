@@ -1,0 +1,20 @@
+[  0%] Built target infra_thread
+[  4%] Built target fmt
+[  4%] Built target storedetail
+[ 27%] Built target zlibstatic
+[ 29%] Built target kv_common
+[ 29%] Built target infra_template
+[ 29%] Built target infra_status
+[ 40%] Built target spdlog
+[ 44%] Built target infra_logger
+[ 46%] Built target offset_allocator
+[ 53%] Built target trans
+[ 53%] Building CXX object ucm/transport/p2p/CMakeFiles/ucm_p2p_transport.dir/src/protocols/hixl/hixl_instance.cpp.o
+[ 57%] Built target buffer_pool
+[ 59%] Linking CXX shared library libucm_p2p_transport.so
+[ 70%] Built target ucm_p2p_transport
+[ 72%] Linking CXX shared library libdramstore.so
+[ 85%] Built target dramstore
+[ 97%] Built target drampool_core
+[100%] Linking CXX executable drampool
+[100%] Built target drampool

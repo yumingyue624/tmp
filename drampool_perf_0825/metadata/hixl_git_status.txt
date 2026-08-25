@@ -1,0 +1,8 @@
+## v9.1.0
+ M src/hixl/cs/hixl_cs_client.cc
+ M src/hixl/engine/comm_engine.cc
+ M src/llm_datadist/adxl/adxl_inner_engine.cc
+ M src/llm_datadist/adxl/comm_channel.cc
+c12f9a5 (HEAD -> v9.1.0, tag: v9.1.0) [bugfix] 适配hcomm建链修改, ChannelGetStatus查询间隔改为1us
+origin	https://gitcode.com/cann/hixl.git (fetch)
+origin	https://gitcode.com/cann/hixl.git (push)

@@ -1,0 +1,2 @@
+8b84e74d83a4b56cd6f4b698bad90b6a5d9bc86054418cc598b0a93d4f6dfe1d  drampool_perf_0825_core.tar.gz
+remote 8b84e74d83a4b56cd6f4b698bad90b6a5d9bc86054418cc598b0a93d4f6dfe1d

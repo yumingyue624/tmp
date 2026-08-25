@@ -1,0 +1,76 @@
+run	layer	request_id	opcode	peer	wait_us	pending_size	pending_depth
+stress_tp8_b4_run02_stage_trace	request_queue	2	2	127.0.0.1:4502	1832		
+stress_tp8_b4_run02_stage_trace	request_queue	1	2	127.0.0.1:4506	2080		
+stress_tp8_b4_run02_stage_trace	request_queue	2	2	127.0.0.1:4506	3873		
+stress_tp8_b4_run02_stage_trace	request_queue	1	2	127.0.0.1:4505	4136		
+stress_tp8_b4_run02_stage_trace	request_queue	2	2	127.0.0.1:4505	5532		
+stress_tp8_b4_run02_stage_trace	request_queue	1	2	127.0.0.1:4508	5727		
+stress_tp8_b4_run02_stage_trace	poller_queue	2	2	127.0.0.1:4506	1705	1	64
+stress_tp8_b4_run02_stage_trace	request_queue	2	2	127.0.0.1:4508	7142		
+stress_tp8_b4_run02_stage_trace	request_queue	1	2	127.0.0.1:4507	7345		
+stress_tp8_b4_run02_stage_trace	request_queue	2	2	127.0.0.1:4507	8794		
+stress_tp8_b4_run02_stage_trace	request_queue	1	2	127.0.0.1:4504	8885		
+stress_tp8_b4_run02_stage_trace	request_queue	2	2	127.0.0.1:4504	10174		
+stress_tp8_b4_run02_stage_trace	request_queue	1	2	127.0.0.1:4503	10350		
+stress_tp8_b4_run02_stage_trace	poller_queue	1	2	127.0.0.1:4508	3469	3	64
+stress_tp8_b4_run02_stage_trace	poller_queue	2	2	127.0.0.1:4508	3270	4	64
+stress_tp8_b4_run02_stage_trace	poller_queue	1	2	127.0.0.1:4507	1823	5	64
+stress_tp8_b4_run02_stage_trace	poller_queue	2	2	127.0.0.1:4507	1632	6	64
+stress_tp8_b4_run02_stage_trace	request_queue	2	2	127.0.0.1:4503	11652		
+stress_tp8_b4_run02_stage_trace	request_queue	3	2	127.0.0.1:4501	9680		
+stress_tp8_b4_run02_stage_trace	request_queue	4	2	127.0.0.1:4501	9848		
+stress_tp8_b4_run02_stage_trace	poller_queue	1	2	127.0.0.1:4503	1452	6	64
+stress_tp8_b4_run02_stage_trace	poller_queue	2	2	127.0.0.1:4503	1253	7	64
+stress_tp8_b4_run02_stage_trace	poller_queue	3	2	127.0.0.1:4501	1087	8	64
+stress_tp8_b4_run02_stage_trace	poller_queue	4	2	127.0.0.1:4501	862	9	64
+stress_tp8_b4_run02_stage_trace	request_queue	5	2	127.0.0.1:4503	513		
+stress_tp8_b4_run02_stage_trace	request_queue	6	2	127.0.0.1:4503	739		
+stress_tp8_b4_run02_stage_trace	request_queue	4	2	127.0.0.1:4505	646		
+stress_tp8_b4_run02_stage_trace	request_queue	5	2	127.0.0.1:4505	857		
+stress_tp8_b4_run02_stage_trace	poller_queue	6	2	127.0.0.1:4503	499	3	64
+stress_tp8_b4_run02_stage_trace	request_queue	6	2	127.0.0.1:4505	1079		
+stress_tp8_b4_run02_stage_trace	request_queue	3	2	127.0.0.1:4506	1253		
+stress_tp8_b4_run02_stage_trace	request_queue	4	2	127.0.0.1:4506	1510		
+stress_tp8_b4_run02_stage_trace	request_queue	5	2	127.0.0.1:4506	1695		
+stress_tp8_b4_run02_stage_trace	request_queue	6	2	127.0.0.1:4506	1893		
+stress_tp8_b4_run02_stage_trace	request_queue	5	2	127.0.0.1:4501	1987		
+stress_tp8_b4_run02_stage_trace	request_queue	6	2	127.0.0.1:4501	2254		
+stress_tp8_b4_run02_stage_trace	request_queue	7	2	127.0.0.1:4501	2453		
+stress_tp8_b4_run02_stage_trace	request_queue	8	2	127.0.0.1:4501	2713		
+stress_tp8_b4_run02_stage_trace	request_queue	3	2	127.0.0.1:4502	2919		
+stress_tp8_b4_run02_stage_trace	request_queue	4	2	127.0.0.1:4502	3171		
+stress_tp8_b4_run02_stage_trace	request_queue	5	2	127.0.0.1:4502	3348		
+stress_tp8_b4_run02_stage_trace	poller_queue	3	2	127.0.0.1:4506	2140	5	64
+stress_tp8_b4_run02_stage_trace	poller_queue	4	2	127.0.0.1:4506	1957	6	64
+stress_tp8_b4_run02_stage_trace	poller_queue	5	2	127.0.0.1:4506	1764	7	64
+stress_tp8_b4_run02_stage_trace	poller_queue	6	2	127.0.0.1:4506	1567	8	64
+stress_tp8_b4_run02_stage_trace	poller_queue	5	2	127.0.0.1:4501	1303	9	64
+stress_tp8_b4_run02_stage_trace	poller_queue	6	2	127.0.0.1:4501	1108	10	64
+stress_tp8_b4_run02_stage_trace	poller_queue	7	2	127.0.0.1:4501	791	11	64
+stress_tp8_b4_run02_stage_trace	poller_queue	8	2	127.0.0.1:4501	570	12	64
+stress_tp8_b4_run02_stage_trace	request_queue	6	2	127.0.0.1:4502	3608		
+stress_tp8_b4_run02_stage_trace	request_queue	3	2	127.0.0.1:4508	3784		
+stress_tp8_b4_run02_stage_trace	request_queue	4	2	127.0.0.1:4508	4054		
+stress_tp8_b4_run02_stage_trace	request_queue	5	2	127.0.0.1:4508	4246		
+stress_tp8_b4_run02_stage_trace	request_queue	6	2	127.0.0.1:4508	4490		
+stress_tp8_b4_run02_stage_trace	request_queue	3	2	127.0.0.1:4507	4687		
+stress_tp8_b4_run02_stage_trace	request_queue	4	2	127.0.0.1:4507	4873		
+stress_tp8_b4_run02_stage_trace	request_queue	5	2	127.0.0.1:4507	5072		
+stress_tp8_b4_run02_stage_trace	request_queue	6	2	127.0.0.1:4507	5278		
+stress_tp8_b4_run02_stage_trace	request_queue	3	2	127.0.0.1:4504	5393		
+stress_tp8_b4_run02_stage_trace	request_queue	4	2	127.0.0.1:4504	5575		
+stress_tp8_b4_run02_stage_trace	request_queue	5	2	127.0.0.1:4504	5745		
+stress_tp8_b4_run02_stage_trace	request_queue	6	2	127.0.0.1:4504	5925		
+stress_tp8_b4_run02_stage_trace	poller_queue	5	2	127.0.0.1:4502	3007	10	64
+stress_tp8_b4_run02_stage_trace	poller_queue	6	2	127.0.0.1:4502	2831	11	64
+stress_tp8_b4_run02_stage_trace	poller_queue	3	2	127.0.0.1:4508	2562	12	64
+stress_tp8_b4_run02_stage_trace	poller_queue	4	2	127.0.0.1:4508	2372	13	64
+stress_tp8_b4_run02_stage_trace	poller_queue	5	2	127.0.0.1:4508	2128	14	64
+stress_tp8_b4_run02_stage_trace	poller_queue	6	2	127.0.0.1:4508	1932	15	64
+stress_tp8_b4_run02_stage_trace	poller_queue	3	2	127.0.0.1:4507	1747	16	64
+stress_tp8_b4_run02_stage_trace	poller_queue	4	2	127.0.0.1:4507	1548	17	64
+stress_tp8_b4_run02_stage_trace	poller_queue	5	2	127.0.0.1:4507	1341	18	64
+stress_tp8_b4_run02_stage_trace	poller_queue	6	2	127.0.0.1:4507	1140	19	64
+stress_tp8_b4_run02_stage_trace	poller_queue	3	2	127.0.0.1:4504	924	20	64
+stress_tp8_b4_run02_stage_trace	poller_queue	4	2	127.0.0.1:4504	739	21	64
+stress_tp8_b4_run02_stage_trace	poller_queue	5	2	127.0.0.1:4504	560	22	64
