@@ -126,6 +126,27 @@ std::atomic<int> activeWriteIdx_; // :79  当前是否有写者（NO_ACTIVE_WRIT
 
 笔记"gauge 只记录最新值，多个进程/线程都想打一个值时它决定记录哪个"——在本库内体现为**聚合时的后写覆盖**（跨线程遍历 list 时的顺序覆盖）；注意这个顺序是不确定的，同一聚合窗口内多线程打同名 gauge 时"最终留哪个"没有时序保证，gauge 应当只有唯一逻辑写者（比如 YuanRong reporter 的 leader 机制，见 §6）。
 
+### 2.5 `UpdateStats` 三个重载 = 同一条链的三层（别被 overload 迷惑）
+
+`metrics.cc:74-94` 三个 `UpdateStats` 不是三套逻辑，前两个只是"拿 MetricId 的方式"不同，最后一个才是真正写数：
+
+```
+python ucmmetrics.update_stats({"name": v})      ← metrics.py.cc:37 绑到字符串版
+C++ 低频 UpdateStats("name", v)                  ← 每次: hash 字符串 + 查 nameToId_（metrics.cc:74-78）
+C++ 热路径 UpdateStats(NAME_TO_METRIC_ID("x"), v)← CachedMetric 版（metrics.cc:80-83）
+        │                                            稳态: 1 条 atomic load 直接取缓存 id
+        ▼
+私有 UpdateStats(MetricId id, v)                  ← metrics.cc:85-94（metrics.h:187 声明在 private）
+   ① isInited/INVALID/越界 校验 → 未注册的名字静默丢
+   ② RegisterCurrentThread()（仅线程首次）
+   ③ WriteGuard 挑双缓冲槽 → UpdateBuffer 写本线程 map
+```
+
+和 `nameToId_` 的关系一句话：**`nameToId_` 是单例里的"权威科目表"（CreateStats 写它，metrics.cc:62-71），`NAME_TO_METRIC_ID` 造出的 `CachedMetric` 是"每个调用点一份的解析结果快照"**——首次打点查表一次、把数字 id 抄进 `metric.id`，之后热路径永不回头。附带两个细节：
+
+- 同一字符串写在两个不同调用点 = 两份独立 static 缓存（各付一次哈希，无所谓）；不做成全局缓存 map 正是因为 per-call-site static 比任何运行时查表都快。
+- `epoch` 机制（`registerEpoch_`/`seenEpoch`，metrics.cc:71,121-122）专治"打点早于注册"：没查到不反复试，**只有发生过新注册（epoch 变了）才允许再查一次**，稳态仍然零哈希。python 桥走字符串版（每次一哈希）可接受，因为 python 侧打点都是低频事件。
+
 ## 3. "和 vllm 接口怎么对上：注册接口 + get 返回结构" —— 对
 
 注册发生在启动时，两处出口各一套：
@@ -167,6 +188,28 @@ scheduler 周期调 connector.get_kv_connector_stats()   (ucm_connector.py:2909)
 
 另有一个 fork 陷阱：目录方式的指标对象是进程启动时注册的，若 worker 是从已注册进程 fork 出来的（offline 脚本场景，前面聊过），子进程会带着继承的计数用新 pid 再写一份文件 → 双算。`vllm serve` 默认 spawn 掩盖了它。
 
+### 4.5 "一次读空、两边都喂"的 drain 机制（为什么必须这样设计）
+
+两个出口共享同一个进程级 `MetricsDispatcher`（metrics_dispatcher.py:145-149 全局单例）。全进程**唯一**读空 C++ 账本的地方是 `drain_to_consumers()` 里的这一句（metrics_dispatcher.py:59）：
+
+```python
+counter_stats, gauge_stats, histogram_stats = ucmmetrics.get_all_stats_and_clear()  # 增量，读后即清
+```
+
+拉到增量后**立刻同时 `_merge_stats` 进 multiproc 和 vllm_connector 两份独立缓冲**（:64-73，各自带白名单过滤）。之后各出口用 `get_stats_and_clear(自己的名字)` 只取走、只清空**自己那份**。
+
+**为什么不能"谁要数据谁去读 C++"**：两条出口节奏不同——multiproc 是 UCM 自己 10s 定时线程（observability.py:198-208），vllm_connector 是 vLLM scheduler 不定时回调 `get_kv_connector_stats()`（ucm_connector.py:2905-2922）。C++ 账本是**读空式**的（clear-on-read），如果两边各自直读，先 drain 的一方会把增量拿走，另一方永久丢这段窗口。所以架构上收敛为：任何一方触发 drain，都把这一批同时喂给两边缓冲；没轮到采集的那条，数据先躺在自己的 python 缓冲里，下次取走。dispatcher 用一把 `_lock` 保证"读空+分发"和"取走+清自己"互不踩（:54-81）。
+
+**multiproc 出口的准入门槛与两个实现细节**（补全 §4 表格没说的）：
+
+- 创建条件（ucm_connector.py:2879-2893）：`metrics_config_path` 非空 **且** `consumers.multiproc` 开——所以默认配置（只有 vllm_connector）下 `PrometheusStatsLogger` 根本不会被 new，多进程目录那套完全不启动。
+- 幂等守卫：`_metric_mappings` 是模块级 dict（observability.py:48），第二次构造直接 return（:58-60），防 prometheus_client 重复注册同名指标抛 `DuplicateMetric`。小坑：提前 return 时 `self.log_interval/thread` 未赋值，后续若走到 `shutdown()`（`__del__`）会 AttributeError——被 `__del__` 的 except 吞掉，属已知不干净点。
+- histogram 导出无公开"按桶回放增量"API，直接写 `metric._buckets[i].inc()` 和 `_sum.inc()`（:147-165），桶数对不上会打 error 并跳过。
+
+**单例是"每进程一份"**（呼应 §0 图中"进程内单例"）：EngineCore、frontend、独立 server 进程各有一份 C++ 账本和一份 dispatcher——vllm_connector 路靠 vLLM 的 ZMQ stats 通道把子进程账本搬运汇聚；multiproc 路靠"每进程自己导出文件、抓取端拼"。两条本质都是在解决**跨进程账本合并**，只是合并点在采集端还是传输端。
+
+**兼容性降级**：`UCM_HAS_PROM_METRICS`（integration/vllm/metrics.py:38-41）——vLLM 版本没有 `KVConnectorPromMetrics` API 时，`build_prom_metrics` 直接返回 None，vllm_connector 路只剩 stats 回传不落地 prom；此时若指标还想出来，只能开 multiproc。
+
 ## 5. "元戎模式"：外部进程写文件，UCM 读进来再走统一出口
 
 背景（笔记）：元戎是"UCM 内的 store 客户端 + 每 host 一个独立进程负责实际内存申请/读写"两层结构，UCM 与它的数据通信走 `yuanrong_host:yuanrong_port`（HTTP/RPC，`resource_reporter.py:270` 只是拼 endpoint 标识）。独立进程的打点进不了 vLLM 进程内的 C++ 库，所以：
@@ -191,6 +234,8 @@ scheduler 周期调 connector.get_kv_connector_stats()   (ucm_connector.py:2909)
 
 一旦进了 C++ 库，后面就是普通指标：**vllm_connector 出口自动带上它**（ZMQ 回传 → 唯一 API server），"其它节点的元戎指标通过 vllm 聚合机制一起暴露"（笔记原话）就是这么实现的——每个节点的 scheduler 读不到别的节点的元戎文件，但每个节点把自己的 vllm_connector stats 通过 vLLM 的通道汇到唯一的 API server。
 
+**YuanRong 用的是哪条出口（明确结论）**：默认 = **vllm_connector**。推导链：`examples/ucm_yuanrong_config.yaml` 通篇没有 metrics 字段（无 `metrics_config_path`、无内联 `metrics_config`）→ `load_launch_metrics_config`（metrics_config.py:79-90）落到 `get_default_metrics_config()` → `consumers: {vllm_connector: True}`（default_metrics_config.py:734）；且 multiproc logger 还额外要求 `metrics_config_path` 非空（§4.5），元戎场景连这个都没有，两条都卡死。旁证：`docs/source/user-guide/metrics/metrics_list.md:140-159` 列的 `ucm:yuanrong_*` 全是 `vllm_connector_prefix`（默认 `ucm:`）的输出。元戎现场若想要独立目录方式，需自备 `metrics_config_path` 且 `consumers.multiproc: true`。
+
 ### 5.3 笔记里另外两个提法的定位
 
 - "给个文本文件路径，定时写文本文件"作为**方案本身**还有一种走法：Prometheus node_exporter 的 textfile collector 直接读文本，完全不经过 UCM——笔记说元戎"没暴露 http、改 Prometheus"接近这个思路，但**本仓库实现的是 §5.2 的"UCM 读文件再走统一出口"**，没有用 textfile collector。区别在于后者把外部指标并入了 UCM 的名字空间、labels（model_name/worker_id 或 worker_rank）和两条 consumer 出口。
@@ -204,6 +249,7 @@ scheduler 周期调 connector.get_kv_connector_stats()   (ucm_connector.py:2909)
   2. UCM 侧仿照 `YuanRongResourceReporter` 写一个 DramPool reporter：`/dev/shm` flock 选主（防多 DP 重复读）、tail 最后完整行、counter 差值化、`ucmmetrics.update_stats()` 回流；
   3. 指标走默认 vllm_connector 出口聚合到唯一 API server，跨节点不需要任何新通道。
   （注意：`drampool.md` 是 DramPool 设计权威文档，这条属于扩展方向，落地前需要补进设计文档。）
+- **dram/DramPool 当前的 metrics 现状（代码核实，develop @ d055edda）**：`ucm/store/dram/**`（含 drampool server）和 `ucm/transport/**` 里**没有任何** `UC::Metrics::UpdateStats / CreateStats / GetAllStatsAndClear` 调用——即 dram 链路目前完全没有 C++ 侧打点，server 进程也没有自己的汇总/导出机制；dram 场景你能看到的指标（`interval_lookup_hit_rates`、`load/save_bytes_total`、connector 接口耗时等）**全部是 connector Python 层 `ucmmetrics.update_stats(...)` 打的**（ucm_connector.py:204/1584/1835/2010 等，落进 vLLM 进程的 C++ 账本后走 §3/§4 的出口）。因此笔记/口述里"**独立 DramPool 进程的汇总是纯 C++ 自己做的，两条路不同**"这句**与当前代码不符**：DramPool server 既不打点也不 drain（`GetAllStatsAndClear` 在 ucm/ 生产代码里唯一消费者就是 dispatcher 那一处，metrics_dispatcher.py:59）——这正是上面"复刻元戎模式"值得做的现状注脚。
 - 每个 store 用自己的名字前缀（`cache_*`、`posix_*`、`mooncake_*`、`yuanrong_*`），不同 connector 打不同 name，都写在同一份配置里；"没打过 metrics 的不会展示"——C++ 库里没人 `UpdateStats` 的指标，`GetAllStatsAndClear()` 快照里就没有这个 key，出口自然不输出（dispatcher `:61-62` 空快照直接返回）。
 
 ## 7. 两个配置文件必须一起改
@@ -263,3 +309,8 @@ UC::Metrics::UpdateStats(NAME_TO_METRIC_ID("cache_load_bandwidth_gbps"), bwGbps)
 | 从 yaml 删指标 = 不注册 = 不打 = 不展示 | 确认 | `metrics.cc:87-89` |
 | 一次大时间拆段，聚合在 Grafana query | 确认 | `trans_manager.h:69-78` 等 |
 | 数据量可控、默认开启无性能影响 | 确认 | `metrics_config.py:93-94` |
+| 三个 `UpdateStats` 重载的区别（字符串版每次哈希 / CachedMetric 版稳态零哈希 / 私有 MetricId 版真正写数） | 确认，见 §2.5 | `metrics.cc:74-94` |
+| 一次 drain 两边都喂（两出口节奏不同，C++ 读空式必须收敛单一读取点） | 确认，见 §4.5 | `metrics_dispatcher.py:56-81` |
+| multiproc 出口需 `metrics_config_path` 非空 + consumers 显式开 | 确认，见 §4.5 | `ucm_connector.py:2879-2893` |
+| 元戎用哪条出口 | 默认 **vllm_connector**（yuanrong yaml 无 metrics 字段） | §5.2 结论段 |
+| "独立 DramPool 进程的汇总是纯 C++ 自己做的" | **不成立**：dram/transport 目前无任何 metrics 打点与 drain，dram 链路指标全由 connector Python 打点 | §6 现状注脚、`GetAllStatsAndClear` 全库检索 |

@@ -1,0 +1,84 @@
+Warning: Permanently added '10.218.3.20' (ED25519) to the list of known hosts.
+
+Authorized users only. All activities may be monitored and reported.
+
+Number of files: 4,532 (reg: 3,532, dir: 998, link: 2)
+Number of created files: 0
+Number of deleted files: 0
+Number of regular files transferred: 0
+Total file size: 299,171,959 bytes
+Total transferred file size: 0 bytes
+Literal data: 0 bytes
+Matched data: 0 bytes
+File list size: 33,352
+File list generation time: 0.001 seconds
+File list transfer time: 0.000 seconds
+Total bytes sent: 1,053
+Total bytes received: 126,094
+
+sent 1,053 bytes  received 126,094 bytes  254,294.00 bytes/sec
+total size is 299,171,959  speedup is 2,352.96
+Warning: Permanently added '10.218.3.20' (ED25519) to the list of known hosts.
+
+Authorized users only. All activities may be monitored and reported.
+
+Number of files: 3,444 (reg: 2,924, dir: 520)
+Number of created files: 0
+Number of deleted files: 0
+Number of regular files transferred: 0
+Total file size: 110,651,478 bytes
+Total transferred file size: 0 bytes
+Literal data: 0 bytes
+Matched data: 0 bytes
+File list size: 29,336
+File list generation time: 0.001 seconds
+File list transfer time: 0.000 seconds
+Total bytes sent: 563
+Total bytes received: 89,268
+
+sent 563 bytes  received 89,268 bytes  179,662.00 bytes/sec
+total size is 110,651,478  speedup is 1,231.77
+Warning: Permanently added '10.218.3.20' (ED25519) to the list of known hosts.
+
+Authorized users only. All activities may be monitored and reported.
+
+Number of files: 120 (reg: 80, dir: 34, link: 6)
+Number of created files: 0
+Number of deleted files: 0
+Number of regular files transferred: 0
+Total file size: 6,397,000 bytes
+Total transferred file size: 0 bytes
+Literal data: 0 bytes
+Matched data: 0 bytes
+File list size: 3,372
+File list generation time: 0.001 seconds
+File list transfer time: 0.000 seconds
+Total bytes sent: 53
+Total bytes received: 3,416
+
+sent 53 bytes  received 3,416 bytes  2,312.67 bytes/sec
+total size is 6,397,000  speedup is 1,844.05
+Warning: Permanently added '10.218.3.20' (ED25519) to the list of known hosts.
+
+Authorized users only. All activities may be monitored and reported.
+
+Number of files: 17 (reg: 16, dir: 1)
+Number of created files: 0
+Number of deleted files: 0
+Number of regular files transferred: 0
+Total file size: 31,418,838,137 bytes
+Total transferred file size: 0 bytes
+Literal data: 0 bytes
+Matched data: 0 bytes
+File list size: 550
+File list generation time: 0.001 seconds
+File list transfer time: 0.000 seconds
+Total bytes sent: 20
+Total bytes received: 561
+
+sent 20 bytes  received 561 bytes  1,162.00 bytes/sec
+total size is 31,418,838,137  speedup is 54,077,174.07
+327M	/home/codex_drampool_perf/nt/unified-cache-management
+126M	/home/codex_drampool_perf/nt/hixl
+6.3M	/home/codex_drampool_perf/nt/cann
+45G	/home/codex_drampool_perf/models/DeepSeek-V2-Lite-Chat

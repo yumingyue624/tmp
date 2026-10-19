@@ -1,0 +1,6 @@
+[2026-08-24 19:17:56.894311][UC][I] DramPool CompletionPoller started [593,642][drampool_server.cc:555,CompletionPollerLoop]
+[2026-08-24 19:17:56.894394][UC][I] DramPool TaskWorker started [593,643][drampool_server.cc:473,TaskWorkerLoop]
+[2026-08-24 19:17:56.894483][UC][I] DramPool GCThread started, interval_ms=1000 [593,644][drampool_server.cc:562,GCThreadLoop]
+[2026-08-24 19:17:56.894598][UC][I] DramPool RequestReceiver started, addr=127.0.0.1:9000 [593,645][drampool_server.cc:480,RequestReceiveLoop]
+[2026-08-24 19:17:58.685240][UC][I] DramPool health server is disabled [593,593][health_server.cc:140,Start]
+[2026-08-24 19:17:58.685279][UC][I] DramPool service ready, addr=127.0.0.1:9000 [593,593][drampool_daemon.cc:79,Run]

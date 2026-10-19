@@ -1,0 +1,138 @@
+diff --git a/src/hixl/cs/hixl_cs_client.cc b/src/hixl/cs/hixl_cs_client.cc
+index 575849c..1000000 100644
+--- a/src/hixl/cs/hixl_cs_client.cc
++++ b/src/hixl/cs/hixl_cs_client.cc
+@@ -11,6 +11,7 @@
+ #include "hixl_cs_client.h"
+ #include <algorithm>
+ #include <chrono>
++#include <cstdio>
+ #include <cstdint>
+ #include <cstring>
+ #include <limits>
+@@ -28,6 +29,12 @@
+ 
+ namespace hixl {
+ namespace {
++uint64_t PerfNowUs() {
++  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
++      std::chrono::steady_clock::now().time_since_epoch()).count());
++}
++
+ constexpr uint32_t kDefaultTransferPoolSize = 128U;
+ constexpr uint32_t kDeviceCompleteMagic = 0x55425548U;
+ constexpr uint32_t kRoceCompleteMagic = 0x524F4345U;
+@@ -474,22 +481,39 @@ Status HixlCSClient::TransferWithRetry(bool is_get, ChannelHandle channel_handle
+ }
+ 
+ Status HixlCSClient::BatchTransferTask(bool is_get, uint32_t list_num, const HixlOneSideOpDesc *desc_list) const {
++  const uint64_t total_begin = PerfNowUs();
++  uint64_t first_nbi_us = 0U;
++  uint64_t max_nbi_us = 0U;
++  uint32_t max_nbi_index = 0U;
+   for (uint32_t i = 0; i < list_num; i++) {
+     void *dst = is_get ? desc_list[i].local_buf : desc_list[i].remote_buf;
+     const void *src = is_get ? desc_list[i].remote_buf : desc_list[i].local_buf;
++    const uint64_t nbi_begin = PerfNowUs();
+     auto ret = TransferWithRetry(is_get, client_channel_handle_, dst, src, desc_list[i].len);
++    const uint64_t nbi_us = PerfNowUs() - nbi_begin;
++    if (i == 0U) { first_nbi_us = nbi_us; }
++    if (nbi_us > max_nbi_us) {
++      max_nbi_us = nbi_us;
++      max_nbi_index = i;
++    }
+     if (ret != SUCCESS) {
+       return FAILED;
+     }
+   }
++  const uint64_t nbi_done = PerfNowUs();
++  const uint64_t fence_begin = PerfNowUs();
+   int32_t hccl_ret = HcommProxy::ChannelFenceOnThread(static_cast<ThreadHandle>(0), client_channel_handle_);
++  const uint64_t fence_done = PerfNowUs();
+   if (hccl_ret != SUCCESS) {
+     HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed, client_channel_handle_ is %lu, hccl_ret is %d.",
+               client_channel_handle_, hccl_ret);
+     return FAILED;
+   }
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=host_batch_task is_get=%d list_num=%u nbi_loop_us=%lu "
++               "first_nbi_us=%lu max_nbi_us=%lu max_nbi_index=%u fence_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(is_get), list_num, nbi_done - total_begin, first_nbi_us, max_nbi_us,
++               max_nbi_index, fence_done - fence_begin, fence_done - total_begin);
+   return SUCCESS;
+ }
+ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, const HixlOneSideOpDesc *desc_list,
+                                             void **query_handle) {
++  const uint64_t total_begin = PerfNowUs();
+   uint32_t num_chunks = (list_num + kMaxKernelBatchSize - 1U) / kMaxKernelBatchSize;
+   for (uint32_t chunk_idx = 0U; chunk_idx < num_chunks; ++chunk_idx) {
+     uint32_t chunk_offset = chunk_idx * kMaxKernelBatchSize;
+@@ -499,8 +523,10 @@ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, cons
+     HIXL_CHK_STATUS_RET(BatchTransferTask(is_get, chunk_size, desc_list + chunk_offset),
+                         "[HixlClient] BatchTransferTask failed for chunk %u/%u", chunk_idx, num_chunks);
+   }
++  const uint64_t batch_done = PerfNowUs();
+   int32_t flag_index = AcquireFlagIndex();
++  const uint64_t flag_acquired = PerfNowUs();
+   if (flag_index == -1) {
+     HIXL_LOGE(RESOURCE_EXHAUSTED,
+               "There are a large number of transfer tasks with no query results, making it impossible to create new "
+@@ -519,8 +545,10 @@ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, cons
+   }
+   int32_t hccl_ret = HcommProxy::ReadNbiOnThread(static_cast<ThreadHandle>(0), client_channel_handle_, flag_addr,
+                                                  tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
++  const uint64_t flag_read_done = PerfNowUs();
+   if (hccl_ret != 0) {  // ret值为0时表示执行成功
+     HIXL_LOGE(
+         FAILED,
+@@ -540,6 +568,13 @@ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, cons
+   live_handles_[flag_index] = query_mem_handle;
+   // 成功后 dismiss guard，避免重复释放
+   HIXL_DISMISS_GUARD(flag_guard);
++  const uint64_t total_done = PerfNowUs();
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=host_async is_get=%d list_num=%u chunks=%u batch_task_us=%lu "
++               "flag_acquire_us=%lu flag_read_us=%lu handle_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(is_get), list_num, num_chunks, batch_done - total_begin,
++               flag_acquired - batch_done, flag_read_done - flag_acquired, total_done - flag_read_done,
++               total_done - total_begin);
+   return SUCCESS;
+ }
+@@ -1009,15 +1044,21 @@ Status HixlCSClient::ConvertHostMappedDescs(uint32_t list_num, HixlOneSideOpDesc
+ 
+ Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const HixlOneSideOpDesc *desc_list,
+                                         void **query_handle) {
++  const uint64_t total_begin = PerfNowUs();
+   std::lock_guard<std::mutex> lock(mutex_);
++  const uint64_t lock_acquired = PerfNowUs();
+   HIXL_CHK_BOOL_RET_STATUS(!transfer_failure_latched_, FAILED,
+                            "[HixlClient] BatchTransferAsync rejected after prior transfer failure. last_status=%u, "
+                            "is_get=%d, list_num=%u",
+                            static_cast<uint32_t>(transfer_failure_status_), static_cast<int32_t>(is_get), list_num);
+   auto ctx_guard = GetContextGuard();
+   (void)ctx_guard;
++  const uint64_t context_ready = PerfNowUs();
+   HIXL_CHK_STATUS_RET(ValidateAddress(list_num, desc_list), "[HixlClient] ValidateAddress failed.");
++  const uint64_t validated = PerfNowUs();
+   HIXL_CHECK_NOTNULL(local_endpoint_);
+   const EndpointDesc ep = local_endpoint_->GetEndpoint();
+   Status ret = FAILED;
+@@ -1036,11 +1077,18 @@ Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const Hi
+     HIXL_LOGE(PARAM_INVALID, "[HixlClient] Invalid endpoint location: %d", ep.loc.locType);
+     return PARAM_INVALID;
+   }
++  const uint64_t dispatched = PerfNowUs();
+   HIXL_CHK_STATUS_RET(LatchTransferFailureIfNeeded(ret),
+                       "[HixlClient] BatchTransferAsync failed, is_get=%d, list_num=%u, local=[%s], remote=[%s]",
+                       static_cast<int32_t>(is_get), list_num, EndpointToString(ep).c_str(),
+                       EndpointToString(remote_endpoint_).c_str());
+   HIXL_LOGI("[HixlClient] BatchTransferAsync success, is_get=%d, list_num=%u", static_cast<int32_t>(is_get), list_num);
++  const uint64_t total_done = PerfNowUs();
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=batch_async is_get=%d list_num=%u endpoint_loc=%d mutex_wait_us=%lu "
++               "context_us=%lu validate_us=%lu dispatch_us=%lu tail_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(is_get), list_num, static_cast<int32_t>(ep.loc.locType),
++               lock_acquired - total_begin, context_ready - lock_acquired, validated - context_ready,
++               dispatched - validated, total_done - dispatched, total_done - total_begin);
+   return SUCCESS;
+ }

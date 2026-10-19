@@ -1,0 +1,376 @@
+diff --git a/src/hixl/cs/hixl_cs_client.cc b/src/hixl/cs/hixl_cs_client.cc
+index b610e9c..d3919b9 100644
+--- a/src/hixl/cs/hixl_cs_client.cc
++++ b/src/hixl/cs/hixl_cs_client.cc
+@@ -11,6 +11,7 @@
+ #include "hixl_cs_client.h"
+ #include <algorithm>
+ #include <chrono>
++#include <cstdio>
+ #include <cstdint>
+ #include <cstring>
+ #include <limits>
+@@ -32,6 +33,11 @@
+ 
+ namespace hixl {
+ namespace {
++uint64_t PerfNowUs() {
++  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
++      std::chrono::steady_clock::now().time_since_epoch()).count());
++}
++
+ constexpr uint32_t kDefaultTransferPoolSize = 128U;
+ constexpr uint32_t kDeviceCompleteMagic = 0x55425548U;
+ constexpr uint32_t kRoceCompleteMagic = 0x524F4345U;
+@@ -475,24 +481,44 @@ Status HixlCSClient::TransferWithRetry(bool is_get, uint64_t channel_handle, voi
+ }
+ 
+ Status HixlCSClient::BatchTransferTask(bool is_get, uint32_t list_num, const HixlOneSideOpDesc *desc_list) const {
++  const uint64_t total_begin = PerfNowUs();
++  uint64_t first_nbi_us = 0U;
++  uint64_t max_nbi_us = 0U;
++  uint32_t max_nbi_index = 0U;
+   for (uint32_t i = 0; i < list_num; i++) {
+     void *dst = is_get ? desc_list[i].local_buf : desc_list[i].remote_buf;
+     const void *src = is_get ? desc_list[i].remote_buf : desc_list[i].local_buf;
++    const uint64_t nbi_begin = PerfNowUs();
+     auto ret = TransferWithRetry(is_get, client_channel_handle_, dst, src, desc_list[i].len);
++    const uint64_t nbi_us = PerfNowUs() - nbi_begin;
++    if (i == 0U) { first_nbi_us = nbi_us; }
++    if (nbi_us > max_nbi_us) {
++      max_nbi_us = nbi_us;
++      max_nbi_index = i;
++    }
+     if (ret != SUCCESS) {
+       return FAILED;
+     }
+   }
++  const uint64_t nbi_done = PerfNowUs();
++  const uint64_t fence_begin = PerfNowUs();
+   int32_t hccl_ret = HcommProxy::ChannelFenceOnThread(static_cast<ThreadHandle>(0), client_channel_handle_);
++  const uint64_t fence_done = PerfNowUs();
+   if (hccl_ret != SUCCESS) {
+     HIXL_LOGE(FAILED, "[HixlClient] HcommChannelFenceOnThread failed, client_channel_handle_ is %lu, hccl_ret is %d.",
+               client_channel_handle_, hccl_ret);
+     return FAILED;
+   }
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=host_batch_task is_get=%d list_num=%u nbi_loop_us=%lu "
++               "first_nbi_us=%lu max_nbi_us=%lu max_nbi_index=%u fence_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(is_get), list_num, nbi_done - total_begin, first_nbi_us, max_nbi_us,
++               max_nbi_index, fence_done - fence_begin, fence_done - total_begin);
+   return SUCCESS;
+ }
+ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, const HixlOneSideOpDesc *desc_list,
+                                             void **query_handle) {
++  const uint64_t total_begin = PerfNowUs();
+   uint32_t num_chunks = (list_num + kMaxKernelBatchSize - 1U) / kMaxKernelBatchSize;
+   for (uint32_t chunk_idx = 0U; chunk_idx < num_chunks; ++chunk_idx) {
+     uint32_t chunk_offset = chunk_idx * kMaxKernelBatchSize;
+@@ -500,7 +526,9 @@ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, cons
+     HIXL_CHK_STATUS_RET(BatchTransferTask(is_get, chunk_size, desc_list + chunk_offset),
+                         "[HixlClient] BatchTransferTask failed for chunk %u/%u", chunk_idx, num_chunks);
+   }
++  const uint64_t batch_done = PerfNowUs();
+   int32_t flag_index = AcquireFlagIndex();
++  const uint64_t flag_acquired = PerfNowUs();
+   if (flag_index == -1) {
+     HIXL_LOGE(RESOURCE_EXHAUSTED,
+               "There are a large number of transfer tasks with no query results, making it impossible to create new "
+@@ -519,6 +547,7 @@ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, cons
+   }
+   int32_t hccl_ret = HcommProxy::ReadNbiOnThread(static_cast<ThreadHandle>(0), client_channel_handle_, flag_addr,
+                                                  tag_mem_descs_[kTransFlagName].addr, kFlagSizeBytes);
++  const uint64_t flag_read_done = PerfNowUs();
+   if (hccl_ret != 0) {  // ret值为0时表示执行成功
+     HIXL_LOGE(
+         FAILED,
+@@ -540,6 +569,13 @@ Status HixlCSClient::BatchTransferHostAsync(bool is_get, uint32_t list_num, cons
+   live_handles_[flag_index] = query_mem_handle;
+   // 成功后 dismiss guard，避免重复释放
+   HIXL_DISMISS_GUARD(flag_guard);
++  const uint64_t total_done = PerfNowUs();
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=host_async is_get=%d list_num=%u chunks=%u batch_task_us=%lu "
++               "flag_acquire_us=%lu flag_read_us=%lu handle_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(is_get), list_num, num_chunks, batch_done - total_begin,
++               flag_acquired - batch_done, flag_read_done - flag_acquired, total_done - flag_read_done,
++               total_done - total_begin);
+   return SUCCESS;
+ }
+ 
+@@ -1010,14 +1046,18 @@ Status HixlCSClient::ConvertHostMappedDescs(uint32_t list_num, HixlOneSideOpDesc
+ 
+ Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const HixlOneSideOpDesc *desc_list,
+                                         void **query_handle) {
++  const uint64_t total_begin = PerfNowUs();
+   std::lock_guard<std::mutex> lock(mutex_);
++  const uint64_t lock_acquired = PerfNowUs();
+   HIXL_CHK_BOOL_RET_STATUS(!transfer_failure_latched_, FAILED,
+                            "[HixlClient] BatchTransferAsync rejected after prior transfer failure. last_status=%u, "
+                            "is_get=%d, list_num=%u",
+                            static_cast<uint32_t>(transfer_failure_status_), static_cast<int32_t>(is_get), list_num);
+   auto ctx_guard = GetContextGuard();
+   (void)ctx_guard;
++  const uint64_t context_ready = PerfNowUs();
+   HIXL_CHK_STATUS_RET(ValidateAddress(list_num, desc_list), "[HixlClient] ValidateAddress failed.");
++  const uint64_t validated = PerfNowUs();
+   HIXL_CHECK_NOTNULL(local_endpoint_);
+   const EndpointDesc ep = local_endpoint_->GetEndpoint();
+   Status ret = FAILED;
+@@ -1036,11 +1076,19 @@ Status HixlCSClient::BatchTransferAsync(bool is_get, uint32_t list_num, const Hi
+     HIXL_LOGE(PARAM_INVALID, "[HixlClient] Invalid endpoint location: %d", ep.loc.locType);
+     return PARAM_INVALID;
+   }
++  const uint64_t dispatched = PerfNowUs();
+   HIXL_CHK_STATUS_RET(LatchTransferFailureIfNeeded(ret),
+                       "[HixlClient] BatchTransferAsync failed, is_get=%d, list_num=%u, local=[%s], remote=[%s]",
+                       static_cast<int32_t>(is_get), list_num, EndpointToString(ep).c_str(),
+                       EndpointToString(remote_endpoint_).c_str());
+   HIXL_LOGI("[HixlClient] BatchTransferAsync success, is_get=%d, list_num=%u", static_cast<int32_t>(is_get), list_num);
++  const uint64_t total_done = PerfNowUs();
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=batch_async is_get=%d list_num=%u endpoint_loc=%d mutex_wait_us=%lu "
++               "context_us=%lu validate_us=%lu dispatch_us=%lu tail_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(is_get), list_num, static_cast<int32_t>(ep.loc.locType),
++               lock_acquired - total_begin, context_ready - lock_acquired, validated - context_ready,
++               dispatched - validated, total_done - dispatched, total_done - total_begin);
+   return SUCCESS;
+ }
+ 
+diff --git a/src/hixl/engine/comm_engine.cc b/src/hixl/engine/comm_engine.cc
+index fd703bc..4a0223f 100644
+--- a/src/hixl/engine/comm_engine.cc
++++ b/src/hixl/engine/comm_engine.cc
+@@ -9,9 +9,18 @@
+  */
+ 
+ #include "comm_engine.h"
++#include <chrono>
++#include <cstdio>
+ #include "common/hixl_checker.h"
+ 
+ namespace hixl {
++namespace {
++uint64_t CommPerfNowUs() {
++  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
++      std::chrono::steady_clock::now().time_since_epoch()).count());
++}
++}  // namespace
++
+ Status CommEngine::Initialize(const HixlOptions &options) {
+   return adxl_inner_engine_.Initialize(options.RawOptions());
+ }
+@@ -60,15 +69,26 @@ Status CommEngine::TransferSync(const AscendString &remote_engine, TransferOp op
+ Status CommEngine::TransferAsync(const AscendString &remote_engine, TransferOp operation,
+                                  const std::vector<TransferOpDesc> &op_descs, const TransferArgs &optional_args,
+                                  TransferReq &req) {
++  const uint64_t total_begin = CommPerfNowUs();
+   HIXL_CHK_BOOL_RET_STATUS(!op_descs.empty(), PARAM_INVALID, "[CommEngine] TransferAsync failed, op_descs is empty.");
+   (void)optional_args;
+   adxl::TransferOp adxl_operation = static_cast<adxl::TransferOp>(operation);
+   std::vector<adxl::TransferOpDesc> adxl_op_descs;
++  adxl_op_descs.reserve(op_descs.size());
+   for (const auto &op_desc : op_descs) {
+     adxl_op_descs.emplace_back(adxl::TransferOpDesc{op_desc.local_addr, op_desc.remote_addr, op_desc.len});
+   }
++  const uint64_t desc_done = CommPerfNowUs();
+   adxl::TransferArgs adxl_optional_args;
+-  return adxl_inner_engine_.TransferAsync(remote_engine, adxl_operation, adxl_op_descs, adxl_optional_args, req);
++  const Status ret = adxl_inner_engine_.TransferAsync(remote_engine, adxl_operation, adxl_op_descs,
++                                                       adxl_optional_args, req);
++  const uint64_t total_done = CommPerfNowUs();
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=comm_engine_async op=%d list_num=%zu desc_build_us=%lu "
++               "inner_us=%lu total_us=%lu status=%d\n",
++               static_cast<int32_t>(operation), op_descs.size(), desc_done - total_begin,
++               total_done - desc_done, total_done - total_begin, static_cast<int32_t>(ret));
++  return ret;
+ }
+ 
+ Status CommEngine::GetTransferStatus(const TransferReq &req, TransferStatus &status) {
+diff --git a/src/llm_datadist/adxl/adxl_inner_engine.cc b/src/llm_datadist/adxl/adxl_inner_engine.cc
+index 2f97c5a..78b97fe 100644
+--- a/src/llm_datadist/adxl/adxl_inner_engine.cc
++++ b/src/llm_datadist/adxl/adxl_inner_engine.cc
+@@ -9,6 +9,8 @@
+  */
+ 
+ #include "adxl_inner_engine.h"
++#include <chrono>
++#include <cstdio>
+ #include "acl/acl.h"
+ #include "hccl/hccl_adapter.h"
+ #include "common/llm_utils.h"
+@@ -21,6 +23,11 @@
+ 
+ namespace adxl {
+ namespace {
++uint64_t AdxlPerfNowUs() {
++  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
++      std::chrono::steady_clock::now().time_since_epoch()).count());
++}
++
+ constexpr uint64_t kBufferConfigSize = 2U;
+ constexpr uint64_t kBaseBufferSize = 1024 * 1024U;
+ constexpr size_t kDefaultPageShift = 16U;
+@@ -514,11 +521,15 @@ Status AdxlInnerEngine::TransferSync(const AscendString &remote_engine, Transfer
+ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine, TransferOp operation,
+                                       const std::vector<TransferOpDesc> &op_descs, const TransferArgs &optional_args,
+                                       TransferReq &req) {
++  const uint64_t total_begin = AdxlPerfNowUs();
+   hixl::TemporaryRtContext with_context(aclrt_context_);
++  const uint64_t context_done = AdxlPerfNowUs();
+   if (user_config_channel_pool_ || auto_connect_) {
+     (void)ConnectWhenTransfer(remote_engine, kConnectWhenTransferTimeout);
+   }
++  const uint64_t connect_done = AdxlPerfNowUs();
+   auto channel = channel_manager_.GetChannel(ChannelType::kClient, remote_engine.GetString());
++  const uint64_t channel_done = AdxlPerfNowUs();
+   ADXL_CHK_BOOL_RET_STATUS(channel != nullptr, NOT_CONNECTED, "Failed to get channel, remote_engine:%s",
+                            remote_engine.GetString());
+   auto id = next_req_id_.fetch_add(1);
+@@ -533,6 +544,7 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine, Transfe
+                           }
+                         }));
+   Status trans_status = channel->TransferAsync(operation, op_descs, optional_args, req);
++  const uint64_t transfer_done = AdxlPerfNowUs();
+   if (trans_status != SUCCESS) {
+     LLMLOGE(trans_status, "Failed to transfer async, remote_engine:%s", remote_engine.GetString());
+     ADXL_CHK_STATUS_RET(DisconnectOnError(remote_engine.GetString(), kConnectWhenTransferTimeout),
+@@ -545,6 +557,13 @@ Status AdxlInnerEngine::TransferAsync(const AscendString &remote_engine, Transfe
+   hixl::TransferInfo transfer_info = {start_time, static_cast<hixl::TransferOp>(operation), remote_engine};
+   std::lock_guard<std::mutex> lock(req2channel_mutex_);
+   req_map_.emplace(id, transfer_info);
++  const uint64_t total_done = AdxlPerfNowUs();
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=adxl_inner_async op=%d list_num=%zu context_us=%lu connect_us=%lu "
++               "get_channel_us=%lu channel_async_us=%lu tail_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(operation), op_descs.size(), context_done - total_begin,
++               connect_done - context_done, channel_done - connect_done, transfer_done - channel_done,
++               total_done - transfer_done, total_done - total_begin);
+   return SUCCESS;
+ }
+ 
+diff --git a/src/llm_datadist/adxl/comm_channel.cc b/src/llm_datadist/adxl/comm_channel.cc
+index 8d8828a..57b9807 100644
+--- a/src/llm_datadist/adxl/comm_channel.cc
++++ b/src/llm_datadist/adxl/comm_channel.cc
+@@ -9,6 +9,8 @@
+  */
+ 
+ #include "comm_channel.h"
++#include <chrono>
++#include <cstdio>
+ #include <mutex>
+ #include <thread>
+ #include <fcntl.h>
+@@ -26,6 +28,11 @@
+ 
+ namespace adxl {
+ namespace {
++uint64_t ChannelPerfNowUs() {
++  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
++      std::chrono::steady_clock::now().time_since_epoch()).count());
++}
++
+ // hccl HcclCommInitClusterInfoMemConfig not support parallel call, so use mutex to protect it
+ std::mutex g_mutex_;
+ constexpr uint32_t kMaxOpDescNum = 256U;
+@@ -332,17 +339,28 @@ void CommChannel::CompleteRequest(uint64_t id, const std::chrono::steady_clock::
+ 
+ Status CommChannel::IssueAsyncBatchWithHostFlag(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
+                                                 const std::shared_ptr<SlotHandle> &slot, void *host_flag) {
++  const uint64_t total_begin = ChannelPerfNowUs();
+   hixl::TemporaryRtContext ctx_guard(slot->ctx);
++  const uint64_t context_done = ChannelPerfNowUs();
+   ADXL_CHK_STATUS_RET(IssueHcclBatch(operation, op_descs, slot->stream), "Channel Hccl batch issue failed.");
++  const uint64_t hccl_done = ChannelPerfNowUs();
+   ADXL_CHK_ACL_RET(aclrtMemcpyAsync(host_flag, sizeof(uint64_t), slot->dev_const_one, sizeof(uint64_t),
+                                     ACL_MEMCPY_DEVICE_TO_HOST, slot->stream));
++  const uint64_t total_done = ChannelPerfNowUs();
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=issue_async_host_flag op=%d list_num=%zu context_us=%lu "
++               "hccl_issue_us=%lu flag_memcpy_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(operation), op_descs.size(), context_done - total_begin,
++               hccl_done - context_done, total_done - hccl_done, total_done - total_begin);
+   return SUCCESS;
+ }
+ 
+ Status CommChannel::TransferAsync(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
+                                   const TransferArgs &optional_args, TransferReq &req) {
++  const uint64_t total_begin = ChannelPerfNowUs();
+   (void)optional_args;
+   std::lock_guard<std::mutex> launch_lock(device_launch_mu_);
++  const uint64_t lock_done = ChannelPerfNowUs();
+   ADXL_CHK_STATUS_RET(CheckAvailableLocked(), "Channel unavailable.");
+   ADXL_CHK_BOOL_RET_STATUS(channel_info_.comm != nullptr, FAILED,
+                            "Channel comm is null, channel may have been finalized, channel_id:%s.",
+@@ -354,11 +372,13 @@ Status CommChannel::TransferAsync(TransferOp operation, const std::vector<Transf
+ 
+   std::shared_ptr<SlotHandle> slot;
+   ADXL_CHK_STATUS_RET(AcquireSharedSlot(slot), "Failed to acquire transfer slot.");
++  const uint64_t slot_done = ChannelPerfNowUs();
+ 
+   ADXL_CHK_BOOL_RET_STATUS(slot_pool_ != nullptr, FAILED, "Slot pool is null, channel_id:%s.",
+                            channel_info_.channel_id.c_str());
+   void *host_flag = nullptr;
+   const Status alloc_ret = slot_pool_->AcquireHostFlag(*slot, host_flag);
++  const uint64_t flag_done = ChannelPerfNowUs();
+   if (alloc_ret != SUCCESS) {
+     ReleaseSharedSlotRef(slot);
+     MarkUnavailableOnError(alloc_ret);
+@@ -378,13 +398,21 @@ Status CommChannel::TransferAsync(TransferOp operation, const std::vector<Transf
+     record.op_desc_count = op_desc_count;
+     req_2_async_record_[id] = std::move(record);
+   }
++  const uint64_t record_done = ChannelPerfNowUs();
+ 
+   const Status issue_ret = IssueAsyncBatchWithHostFlag(operation, op_descs, slot, host_flag);
++  const uint64_t total_done = ChannelPerfNowUs();
+   if (issue_ret != SUCCESS) {
+     FailChannel(issue_ret);
+     LLMLOGE(issue_ret, "Failed to submit async transfer, req:%lu.", id);
+     return issue_ret;
+   }
++  std::fprintf(stderr,
++               "[HIXL_PERF] event=comm_channel_async op=%d list_num=%zu mutex_wait_us=%lu "
++               "slot_us=%lu host_flag_us=%lu record_us=%lu issue_us=%lu total_us=%lu\n",
++               static_cast<int32_t>(operation), op_descs.size(), lock_done - total_begin,
++               slot_done - lock_done, flag_done - slot_done, record_done - flag_done,
++               total_done - record_done, total_done - total_begin);
+   return SUCCESS;
+ }
+ 
+@@ -446,10 +474,12 @@ Status CommChannel::GetTransferStatus(const TransferReq &req, TransferStatus &st
+ 
+ Status CommChannel::IssueHcclBatch(TransferOp operation, const std::vector<TransferOpDesc> &op_descs,
+                                    aclrtStream stream) {
++  const uint64_t total_begin = ChannelPerfNowUs();
+   ADXL_CHK_BOOL_RET_STATUS(channel_info_.comm != nullptr, FAILED,
+                            "Channel comm is null, channel may have been finalized, channel_id:%s.",
+                            channel_info_.channel_id.c_str());
+   auto trans_func = [this, operation, &stream](HcclOneSideOpDesc *descs, uint32_t desc_num) -> Status {
++    const uint64_t hccl_begin = ChannelPerfNowUs();
+     HcclResult ret = HCCL_SUCCESS;
+     if (operation == READ) {
+       ret = llm::HcclAdapter::GetInstance().HcclBatchGet(channel_info_.comm, channel_info_.peer_rank_id, descs,
+@@ -458,12 +488,18 @@ Status CommChannel::IssueHcclBatch(TransferOp operation, const std::vector<Trans
+       ret = llm::HcclAdapter::GetInstance().HcclBatchPut(channel_info_.comm, channel_info_.peer_rank_id, descs,
+                                                          desc_num, stream);
+     }
++    const uint64_t hccl_done = ChannelPerfNowUs();
++    std::fprintf(stderr, "[HIXL_PERF] event=hccl_batch op=%d desc_num=%u hccl_us=%lu status=%d\n",
++                 static_cast<int32_t>(operation), desc_num, hccl_done - hccl_begin, static_cast<int32_t>(ret));
+     ADXL_CHK_BOOL_RET_STATUS(ret == HCCL_SUCCESS, HcclError2AdxlStatus(ret), "Failed to invoke %s, hccl_result = %d",
+                              operation == READ ? "HcclBatchGet" : "HcclBatchPut", static_cast<int32_t>(ret));
+     return SUCCESS;
+   };
+   BufferedTransfer transfer(trans_func);
+   ADXL_CHK_STATUS_RET(transfer.Put(op_descs), "Failed to batch transfer");
++  const uint64_t total_done = ChannelPerfNowUs();
++  std::fprintf(stderr, "[HIXL_PERF] event=issue_hccl_batch op=%d list_num=%zu total_us=%lu\n",
++               static_cast<int32_t>(operation), op_descs.size(), total_done - total_begin);
+   return SUCCESS;
+ }
+ 

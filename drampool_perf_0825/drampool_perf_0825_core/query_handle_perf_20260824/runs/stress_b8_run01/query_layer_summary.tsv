@@ -1,0 +1,7 @@
+layer	count	min	p50	p90	p95	p99	max
+comm_channel	183	0	1	2	3	8	9
+adxl_inner	183	3	10	17	19	24	33
+comm_engine	183	5	13	22	27	32	46
+hixl_instance	183	14	37	55	79	169	179
+hixl_transport	183	18	46	66	102	183	190
+transport_manager	183	22	52	75	111	188	194

@@ -1,0 +1,219 @@
+diff --git a/ucm/transport/p2p/src/core/transport_manager.cpp b/ucm/transport/p2p/src/core/transport_manager.cpp
+index 28f8dce..147f91f 100644
+--- a/ucm/transport/p2p/src/core/transport_manager.cpp
++++ b/ucm/transport/p2p/src/core/transport_manager.cpp
+@@ -695,10 +695,13 @@ Status TransportManager::GetStatus(TransferHandle handle, TransferStatus& transf
+     callTiming = {};
+     callTiming.manager_entered_us = SteadyNowUs();
+     callTiming.manager_entered_ts_us = UnixNowUs();
++    const auto query_started_us = callTiming.manager_entered_us;
+     if (handle == kInvalidTransferHandle) { return Status::InvalidParam(); }
+     TransferRecord record;
++    std::uint64_t transfers_locked_us = query_started_us;
+     {
+         std::lock_guard<std::mutex> lock(transfers_mutex_);
++        transfers_locked_us = SteadyNowUs();
+         const auto it = transfers_.find(handle);
+         if (it == transfers_.end() || it->second.transport == nullptr) {
+             UC_ERROR("transport manager transfer status unknown handle={}", handle);
+@@ -706,8 +709,18 @@ Status TransportManager::GetStatus(TransferHandle handle, TransferStatus& transf
+         }
+         record = it->second;
+     }
++    const auto lookup_done_us = SteadyNowUs();
+     const auto status =
+         record.transport->GetStatus(record.transport_handle, transfer_status, &callTiming);
++    const auto transport_done_us = SteadyNowUs();
++    UC_INFO(
++        "[QUERY_PERF] component=ucm layer=transport_manager handle={} transport_handle={} "
++        "transfers_lock_wait_us={} lookup_us={} transport_us={} total_us={} api_status={} "
++        "transfer_status={}",
++        handle, record.transport_handle, transfers_locked_us - query_started_us,
++        lookup_done_us - transfers_locked_us, transport_done_us - lookup_done_us,
++        transport_done_us - query_started_us, status.Underlying(),
++        static_cast<int>(transfer_status));
+     if (status != Status::OK() || transfer_status != TransferStatus::Waiting) {
+         const auto completedUs = SteadyNowUs();
+         const auto completedTsUs = UnixNowUs();
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+index 0d555f0..4789225 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+@@ -1,5 +1,6 @@
+ #include "protocols/hixl/hixl_instance.h"
+ #include <acl/acl.h>
++#include <atomic>
+ #include <chrono>
+ #include <exception>
+ #include <utility>
+@@ -70,10 +71,24 @@ Status HixlInstance::Initialize(const std::map<std::string, std::string>& option
+ 
+ Status HixlInstance::Run(Task task)
+ {
+-    QueuedTask queued(std::move(task));
++    static std::atomic<std::uint64_t> next_task_id{1};
++    const auto task_id = next_task_id.fetch_add(1, std::memory_order_relaxed);
++    const auto run_started_us = SteadyNowUs();
++    std::uint64_t task_started_us = run_started_us;
++    std::uint64_t task_completed_us = run_started_us;
++    QueuedTask queued(
++        [&task_started_us, &task_completed_us, task = std::move(task)](hixl::Hixl& engine) mutable {
++            task_started_us = SteadyNowUs();
++            const auto status = task(engine);
++            task_completed_us = SteadyNowUs();
++            return status;
++        });
+     auto result = queued.get_future();
++    std::size_t queue_depth = 0;
++    std::uint64_t enqueue_locked_us = run_started_us;
+     {
+         std::lock_guard<std::mutex> lock(mutex_);
++        enqueue_locked_us = SteadyNowUs();
+         if (!initialized_ || stopping_) {
+             UC_ERROR(
+                 "[Transport][HIXL] reject worker task: engine={} device={} initialized={} "
+@@ -82,10 +97,23 @@ Status HixlInstance::Run(Task task)
+             return Status::Error();
+         }
+         tasks_.push_back(std::move(queued));
++        queue_depth = tasks_.size();
+     }
++    const auto enqueued_us = SteadyNowUs();
+     cv_.notify_one();
+     try {
+-        return result.get();
++        const auto run_status = result.get();
++        const auto run_completed_us = SteadyNowUs();
++        UC_INFO(
++            "[HIXL_WORKER_PERF] task_id={} queue_depth={} enqueue_lock_wait_us={} enqueue_us={} "
++            "queue_wait_us={} execute_us={} result_post_us={} total_us={} status={}",
++            task_id, queue_depth, enqueue_locked_us - run_started_us,
++            enqueued_us - enqueue_locked_us,
++            task_started_us >= enqueued_us ? task_started_us - enqueued_us : 0,
++            task_completed_us >= task_started_us ? task_completed_us - task_started_us : 0,
++            run_completed_us >= task_completed_us ? run_completed_us - task_completed_us : 0,
++            run_completed_us - run_started_us, run_status.Underlying());
++        return run_status;
+     } catch (const std::exception& e) {
+         UC_ERROR("[Transport][HIXL] worker task failed: {}", e.what());
+     } catch (...) {
+@@ -312,14 +340,19 @@ Status HixlInstance::TransferAsync(const std::string& remote_engine, Opcode opco
+ Status HixlInstance::GetTransferStatus(hixl::TransferReq request, TransferStatus& status,
+                                        TransportCallTiming* timing)
+ {
++    const auto query_started_us = SteadyNowUs();
++    std::uint64_t callback_entered_us = query_started_us;
++    std::uint64_t backend_completed_us = query_started_us;
+     status = TransferStatus::Failed;
+-    return Run([&](hixl::Hixl& engine) {
++    const auto run_status = Run([&](hixl::Hixl& engine) {
++        callback_entered_us = SteadyNowUs();
+         hixl::TransferStatus native_transfer_status = hixl::TransferStatus::WAITING;
+         if (timing != nullptr) {
+-            timing->backend_called_us = SteadyNowUs();
++            timing->backend_called_us = callback_entered_us;
+             timing->backend_called_ts_us = UnixNowUs();
+         }
+         const auto native_status = engine.GetTransferStatus(request, native_transfer_status);
++        backend_completed_us = SteadyNowUs();
+         if (native_status != hixl::SUCCESS) {
+             UC_ERROR("[Transport][HIXL] get transfer status failed: req={} returned {}", request,
+                      static_cast<int>(native_status));
+@@ -333,6 +366,16 @@ Status HixlInstance::GetTransferStatus(hixl::TransferReq request, TransferStatus
+         }
+         return Status::OK();
+     });
++    const auto query_completed_us = SteadyNowUs();
++    UC_INFO(
++        "[QUERY_PERF] component=ucm layer=hixl_instance request={} queue_wait_us={} "
++        "backend_us={} run_post_us={} total_us={} api_status={} transfer_status={}",
++        request, callback_entered_us - query_started_us,
++        backend_completed_us >= callback_entered_us ? backend_completed_us - callback_entered_us : 0,
++        query_completed_us >= backend_completed_us ? query_completed_us - backend_completed_us : 0,
++        query_completed_us - query_started_us, run_status.Underlying(),
++        static_cast<int>(status));
++    return run_status;
+ }
+ 
+ const Endpoint& HixlInstance::LocalEndpoint() const { return local_endpoint_; }
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp b/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+index 5e418e0..77ba9ee 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+@@ -1,5 +1,6 @@
+ #include "protocols/hixl/hixl_transport.h"
+ #include <arpa/inet.h>
++#include <chrono>
+ #include <limits>
+ #include <netdb.h>
+ #include <netinet/in.h>
+@@ -15,6 +16,13 @@
+ namespace transport {
+ namespace {
+ 
++std::uint64_t QuerySteadyNowUs()
++{
++    const auto now = std::chrono::steady_clock::now().time_since_epoch();
++    return static_cast<std::uint64_t>(
++        std::chrono::duration_cast<std::chrono::microseconds>(now).count());
++}
++
+ Status PickAvailablePort(const std::string& host, uint16_t& port)
+ {
+     addrinfo hints{};
+@@ -680,15 +688,19 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+                                 TransportCallTiming* timing)
+ {
++    const auto query_started_us = QuerySteadyNowUs();
+     status = TransferStatus::Failed;
+     if (handle == kInvalidTransferHandle) {
+         UC_ERROR("[Transport][HIXL] get status failed: invalid handle");
+         return Status::InvalidParam();
+     }
+     std::shared_lock<std::shared_mutex> lifecycle_lock(lifecycle_mutex_);
++    const auto lifecycle_locked_us = QuerySteadyNowUs();
+     PendingTransfer pending;
++    std::uint64_t pending_locked_us = lifecycle_locked_us;
+     {
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
++        pending_locked_us = QuerySteadyNowUs();
+         const auto it = pending_transfers_.find(handle);
+         if (it == pending_transfers_.end() || it->second.instance_index >= instances_.size()) {
+             UC_ERROR("[Transport][HIXL] get status failed: unknown handle={} instances={}", handle,
+@@ -697,10 +709,12 @@ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+         }
+         pending = it->second;
+     }
++    const auto pending_done_us = QuerySteadyNowUs();
+ 
+     TransferStatus transfer_status = TransferStatus::Waiting;
+     const auto query_status = instances_[pending.instance_index]->GetTransferStatus(
+         pending.request, transfer_status, timing);
++    const auto instance_done_us = QuerySteadyNowUs();
+     if (query_status != Status::OK()) {
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
+         pending_transfers_.erase(handle);
+@@ -709,12 +723,22 @@ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+         return query_status;
+     }
+     status = transfer_status;
++    std::uint64_t erase_done_us = instance_done_us;
+     if (status != TransferStatus::Waiting) {
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
+         pending_transfers_.erase(handle);
++        erase_done_us = QuerySteadyNowUs();
+         UC_DEBUG("[Transport][HIXL] asynchronous transfer completed: handle={} status={}", handle,
+                  static_cast<int>(status));
+     }
++    UC_INFO(
++        "[QUERY_PERF] component=ucm layer=hixl_transport handle={} request={} "
++        "lifecycle_lock_us={} pending_lock_wait_us={} pending_lookup_us={} instance_us={} "
++        "erase_us={} total_us={} transfer_status={}",
++        handle, pending.request, lifecycle_locked_us - query_started_us,
++        pending_locked_us - lifecycle_locked_us, pending_done_us - pending_locked_us,
++        instance_done_us - pending_done_us, erase_done_us - instance_done_us,
++        erase_done_us - query_started_us, static_cast<int>(status));
+     return Status::OK();
+ }
+ 

@@ -1,0 +1,227 @@
+diff --git a/ucm/transport/p2p/src/core/transport_manager.cpp b/ucm/transport/p2p/src/core/transport_manager.cpp
+index 703f3fd..28f8dce 100644
+--- a/ucm/transport/p2p/src/core/transport_manager.cpp
++++ b/ucm/transport/p2p/src/core/transport_manager.cpp
+@@ -637,13 +637,10 @@ Status TransportManager::ExecuteAsync(const Operation& batch, TransferHandle& ha
+     callTiming = {};
+     callTiming.manager_entered_us = SteadyNowUs();
+     callTiming.manager_entered_ts_us = UnixNowUs();
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync START:{}", SteadyNowUs());
+     handle = kInvalidTransferHandle;
+     Transport* transport = nullptr;
+     auto request = batch;
+     auto status = FindTransport(request, transport);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync find transport:{}",
+-                      SteadyNowUs());
+     if (status != Status::OK()) {
+         UC_ERROR("transport manager async transfer selection failed peer={} status={}",
+                  batch.target_manager, status.Underlying());
+@@ -655,8 +652,6 @@ Status TransportManager::ExecuteAsync(const Operation& batch, TransferHandle& ha
+     const auto submitStartedUs = SteadyNowUs();
+     TransferHandle transport_handle = kInvalidTransferHandle;
+     status = transport->ExecuteAsync(request, transport_handle, &callTiming);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync backend returned:{}",
+-                      SteadyNowUs());
+     if (status != Status::OK() || transport_handle == kInvalidTransferHandle) {
+         UC_ERROR(
+             "transport manager async transfer submit failed peer={} segments={} status={} "
+@@ -676,8 +671,6 @@ Status TransportManager::ExecuteAsync(const Operation& batch, TransferHandle& ha
+                                    request.opcode, request.direct, request.ops.size(), bytes,
+                                    submittedUs, submittedTsUs, submittedUs - submitStartedUs});
+     }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync record inserted:{}",
+-                      SteadyNowUs());
+     UC_INFO(
+         "[PERF] component=transport event=transfer_submitted manager={} target={} handle={} "
+         "transport_handle={} opcode={} direct={} segments={} bytes={} submitted_ts_us={} "
+@@ -691,7 +684,6 @@ Status TransportManager::ExecuteAsync(const Operation& batch, TransferHandle& ha
+             ? callTiming.backend_called_us - callTiming.manager_entered_us
+             : 0,
+         submittedUs - submitStartedUs);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] TransportManager ExecuteAsync return:{}", SteadyNowUs());
+     return Status::OK();
+ }
+ 
+@@ -703,7 +695,6 @@ Status TransportManager::GetStatus(TransferHandle handle, TransferStatus& transf
+     callTiming = {};
+     callTiming.manager_entered_us = SteadyNowUs();
+     callTiming.manager_entered_ts_us = UnixNowUs();
+-    UC_INFO("[METRIC DEBUG] TransportManager GetStatus START:{}", SteadyNowUs());
+     if (handle == kInvalidTransferHandle) { return Status::InvalidParam(); }
+     TransferRecord record;
+     {
+@@ -715,10 +706,8 @@ Status TransportManager::GetStatus(TransferHandle handle, TransferStatus& transf
+         }
+         record = it->second;
+     }
+-    UC_INFO("[METRIC DEBUG] TransportManager GetStatus get record:{}", SteadyNowUs());
+     const auto status =
+         record.transport->GetStatus(record.transport_handle, transfer_status, &callTiming);
+-    UC_INFO("[METRIC DEBUG] TransportManager GetStatus get task status:{}", SteadyNowUs());
+     if (status != Status::OK() || transfer_status != TransferStatus::Waiting) {
+         const auto completedUs = SteadyNowUs();
+         const auto completedTsUs = UnixNowUs();
+@@ -743,7 +732,6 @@ Status TransportManager::GetStatus(TransferHandle handle, TransferStatus& transf
+         std::lock_guard<std::mutex> lock(transfers_mutex_);
+         transfers_.erase(handle);
+     }
+-    UC_INFO("[METRIC DEBUG] TransportManager GetStatus return:{}", SteadyNowUs());
+     return status;
+ }
+ 
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+index b5bf770..0d555f0 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_instance.cpp
+@@ -280,25 +280,17 @@ Status HixlInstance::TransferAsync(const std::string& remote_engine, Opcode opco
+                                    const std::vector<Segment>& segments, hixl::TransferReq& request,
+                                    TransportCallTiming* timing)
+ {
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync START:{}", SteadyNowUs());
+     hixl::TransferReq native_request = nullptr;
+     const auto status = Run([&](hixl::Hixl& engine) {
+-        UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync RUN:{}", SteadyNowUs());
+         const auto descs = BuildTransferOpDesc(segments);
+-        UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync descriptors built:{}",
+-                          SteadyNowUs());
+         hixl::TransferArgs args;
+         const auto operation = opcode == Opcode::Read ? hixl::READ : hixl::WRITE;
+         if (timing != nullptr) {
+             timing->backend_called_us = SteadyNowUs();
+             timing->backend_called_ts_us = UnixNowUs();
+         }
+-        UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync native call begin:{}",
+-                          SteadyNowUs());
+         const auto native_status =
+             engine.TransferAsync(remote_engine.c_str(), operation, descs, args, native_request);
+-        UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync native call returned:{}",
+-                          SteadyNowUs());
+         if (native_status != hixl::SUCCESS || native_request == nullptr) {
+             UC_ERROR(
+                 "[Transport][HIXL] async operation failed: TransferAsync(\"{}\", ops={}) returned "
+@@ -313,9 +305,7 @@ Status HixlInstance::TransferAsync(const std::string& remote_engine, Opcode opco
+             native_request);
+         return Status::OK();
+     });
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync Run returned:{}", SteadyNowUs());
+     if (status == Status::OK()) { request = native_request; }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL instance TransferAsync return:{}", SteadyNowUs());
+     return status;
+ }
+ 
+@@ -323,12 +313,10 @@ Status HixlInstance::GetTransferStatus(hixl::TransferReq request, TransferStatus
+                                        TransportCallTiming* timing)
+ {
+     status = TransferStatus::Failed;
+-    UC_INFO("[METRIC DEBUG] HIXL instance GetTransferStatus START:{}", SteadyNowUs());
+     return Run([&](hixl::Hixl& engine) {
+         hixl::TransferStatus native_transfer_status = hixl::TransferStatus::WAITING;
+         if (timing != nullptr) {
+             timing->backend_called_us = SteadyNowUs();
+-            UC_INFO("[METRIC DEBUG] HIXL instance GetTransferStatus RUN:{}", SteadyNowUs());
+             timing->backend_called_ts_us = UnixNowUs();
+         }
+         const auto native_status = engine.GetTransferStatus(request, native_transfer_status);
+diff --git a/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp b/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+index 6496a2c..5e418e0 100644
+--- a/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
++++ b/ucm/transport/p2p/src/protocols/hixl/hixl_transport.cpp
+@@ -14,12 +14,6 @@
+ 
+ namespace transport {
+ namespace {
+-std::uint64_t SteadyNowUs()
+-{
+-    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+-    return static_cast<std::uint64_t>(
+-        std::chrono::duration_cast<std::chrono::microseconds>(now).count());
+-}
+ 
+ Status PickAvailablePort(const std::string& host, uint16_t& port)
+ {
+@@ -624,10 +618,7 @@ Status HixlTransport::ExecuteSync(const Operation& batch)
+ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handle,
+                                    TransportCallTiming* timing)
+ {
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync START:{}", SteadyNowUs());
+     std::shared_lock<std::shared_mutex> lifecycle_lock(lifecycle_mutex_);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync get lifecycle_lock:{}",
+-                      SteadyNowUs());
+     handle = kInvalidTransferHandle;
+     if (role_ == HixlRole::Server) {
+         UC_ERROR("[Transport][HIXL] server role cannot initiate asynchronous transfer");
+@@ -656,8 +647,6 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+         local_index = peer_state.local_index;
+         remote_engine = peer_state.instances.front().endpoint.ToString();
+     }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync get peer route:{}",
+-                      SteadyNowUs());
+ 
+     {
+         std::shared_lock<std::shared_mutex> memory_lock(memories_mutex_);
+@@ -668,14 +657,10 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+             return transfer_status;
+         }
+     }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync validate memory:{}",
+-                      SteadyNowUs());
+ 
+     hixl::TransferReq request = nullptr;
+     const auto status = instances_[local_index]->TransferAsync(remote_engine, batch.opcode,
+                                                                batch.ops, request, timing);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync instance returned:{}",
+-                      SteadyNowUs());
+     if (status != Status::OK()) { return status; }
+ 
+     {
+@@ -684,29 +669,23 @@ Status HixlTransport::ExecuteAsync(const Operation& batch, TransferHandle& handl
+         if (handle == kInvalidTransferHandle) { handle = next_transfer_handle_++; }
+         pending_transfers_.emplace(handle, PendingTransfer{local_index, request});
+     }
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync pending inserted:{}",
+-                      SteadyNowUs());
+     UC_DEBUG(
+         "[Transport][HIXL] asynchronous transfer tracked: peer={} opcode={} segments={} "
+         "instance={} handle={} request={}",
+         batch.target_manager, static_cast<int>(batch.opcode), batch.ops.size(), local_index, handle,
+         request);
+-    UC_INFO_UNLIMITED("[METRIC DEBUG] HIXL transport ExecuteAsync return:{}", SteadyNowUs());
+     return Status::OK();
+ }
+ 
+ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+                                 TransportCallTiming* timing)
+ {
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus START:{}", SteadyNowUs());
+-
+     status = TransferStatus::Failed;
+     if (handle == kInvalidTransferHandle) {
+         UC_ERROR("[Transport][HIXL] get status failed: invalid handle");
+         return Status::InvalidParam();
+     }
+     std::shared_lock<std::shared_mutex> lifecycle_lock(lifecycle_mutex_);
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus get lifecycle_lock:{}", SteadyNowUs());
+     PendingTransfer pending;
+     {
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
+@@ -718,11 +697,10 @@ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+         }
+         pending = it->second;
+     }
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus get pending_mutex_:{}", SteadyNowUs());
++
+     TransferStatus transfer_status = TransferStatus::Waiting;
+     const auto query_status = instances_[pending.instance_index]->GetTransferStatus(
+         pending.request, transfer_status, timing);
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus get task status:{}", SteadyNowUs());
+     if (query_status != Status::OK()) {
+         std::lock_guard<std::mutex> pending_lock(pending_mutex_);
+         pending_transfers_.erase(handle);
+@@ -737,7 +715,6 @@ Status HixlTransport::GetStatus(TransferHandle handle, TransferStatus& status,
+         UC_DEBUG("[Transport][HIXL] asynchronous transfer completed: handle={} status={}", handle,
+                  static_cast<int>(status));
+     }
+-    UC_INFO("[METRIC DEBUG] HIXL transport GetStatus return:{}", SteadyNowUs());
+     return Status::OK();
+ }
+ 
