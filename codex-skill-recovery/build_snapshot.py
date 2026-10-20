@@ -23,7 +23,8 @@ def main():
     entries, objects = [], {}
     for source in sorted(set(discovered)):
         p = pathlib.Path(source)
-        if p.name != 'SKILL.md' or BASE in p.parents:
+        backup_roots = (BASE, WORK / 'tmp/opencode-skill-recovery')
+        if p.name != 'SKILL.md' or any(root in p.parents for root in backup_roots):
             continue
         standalone = p.parent == HOME / 'Downloads'
         files = {'SKILL.md': p.read_bytes()} if standalone else {
