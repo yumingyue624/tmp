@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1540" height="970" viewBox="0 0 1540 970">
+<rect width="100%" height="100%" fill="white"/>
+<text x="50" y="56.0" font-family="Microsoft YaHei, sans-serif" font-size="30" text-anchor="start" fill="#243746">02  注册与操作分离</text>
+<text x="50" y="100.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="start" fill="#657583">注册按分配生命周期复用；每次 Put / Get 不重新注册。</text>
+<rect x="40" y="160" width="1460" height="345" fill="#f5f7f9" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
+<text x="65" y="198.0" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="start" fill="#243746">冷路径：初始化 / 显式注册 / 扩容</text>
+<rect x="80" y="235" width="280" height="78" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="220.0" y="267.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">直接模式</text>
+<text x="220.0" y="296.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">本进程有效内存</text>
+<rect x="80" y="380" width="280" height="78" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="220.0" y="412.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">Dummy 模式</text>
+<text x="220.0" y="441.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">导出 IPC 共享句柄</text>
+<rect x="430" y="380" width="280" height="78" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="570.0" y="412.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">Real 导入</text>
+<text x="570.0" y="441.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">取得本进程地址</text>
+<rect x="800" y="280" width="280" height="120" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="940.0" y="333.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">Client / RealClient</text>
+<text x="940.0" y="362.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">TE + SDK 提前注册</text>
+<rect x="1180" y="280" width="280" height="120" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="1320.0" y="333.7" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">BufferRegistry</text>
+<text x="1320.0" y="361.0" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">区域 → SDK / MRHandle</text>
+<polyline points="360,274 745,274 745,315 800,315" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="789.0924110039014,320.00244962915053 800,315 789.0924110039014,309.99755037084947" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="360,419 430,419" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="419.09241100390136,424.00244962915053 430,419 419.09241100390136,413.99755037084947" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="710,419 755,419 755,365 800,365" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="789.0924110039014,370.00244962915053 800,365 789.0924110039014,359.99755037084947" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="1080,340 1180,340" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="1169.0924110039014,345.00244962915053 1180,340 1169.0924110039014,334.99755037084947" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="40" y="555" width="1460" height="325" fill="#f5f7f9" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
+<text x="65" y="593.0" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="start" fill="#243746">热路径：复用已注册区域</text>
+<rect x="80" y="690" width="300" height="95" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="230.0" y="730.9" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">Mooncake Slice</text>
+<text x="230.0" y="759.5" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">ptr + size</text>
+<rect x="535" y="690" width="360" height="95" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="715.0" y="731.2" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">Backend 查注册表</text>
+<text x="715.0" y="758.5" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">校验设备 / 范围 / context</text>
+<rect x="1110" y="690" width="350" height="95" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="1285.0" y="731.2" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">构造 SDK 请求</text>
+<text x="1285.0" y="758.5" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">MRHandle + 有效数据范围</text>
+<polyline points="380,738 535,738" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="524.0924110039014,743.0024496291505 535,738 524.0924110039014,732.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="895,738 1110,738" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="1099.0924110039014,743.0024496291505 1110,738 1099.0924110039014,732.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="1320,400 1320,640 715,640 715,690" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
+<polyline points="709.9975503708495,679.0924110039014 715,690 720.0024496291505,679.0924110039014" fill="none" stroke="#28705f" stroke-width="2"/>
+<text x="1080.0" y="622.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#28705f">复用预注册记录</text>
+<text x="70" y="931.0" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="start" fill="#243746">撤销顺序：停止新引用 → 等待在途访问结束 → 注销 MR → 关闭 IPC 映射。</text>
+</svg>

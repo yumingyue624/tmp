@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1520" height="1000" viewBox="0 0 1520 1000">
+<rect width="100%" height="100%" fill="white"/>
+<text x="50" y="56.0" font-family="Microsoft YaHei, sans-serif" font-size="30" text-anchor="start" fill="#243746">03  双写时序：先外部提交，再原生 Put，最后 Wait</text>
+<text x="50" y="100.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="start" fill="#657583">图示异步 backend；同步 backend 返回已完成的 OperationHandle，调用顺序相同。</text>
+<rect x="45" y="150" width="290" height="70" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="190.0" y="192.35" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#657583">引擎 / Connector</text>
+<polyline points="190,220 190,890" fill="none" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
+<rect x="420" y="150" width="290" height="70" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="565.0" y="192.35" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#315b8a">C++ Client</text>
+<polyline points="565,220 565,890" fill="none" stroke="#315b8a" stroke-width="2" stroke-dasharray="9 7"/>
+<rect x="795" y="150" width="290" height="70" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="940.0" y="192.35" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#315b8a">原生路径</text>
+<polyline points="940,220 940,890" fill="none" stroke="#315b8a" stroke-width="2" stroke-dasharray="9 7"/>
+<rect x="1170" y="150" width="290" height="70" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="1315.0" y="192.35" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">ExternalStoreBackend</text>
+<polyline points="1315,220 1315,890" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
+<rect x="45" y="245" width="1420" height="75" fill="#fff6e7" stroke="#93651f" stroke-width="2" stroke-dasharray="9 7"/>
+<text x="755.0" y="284.0" font-family="Microsoft YaHei, sans-serif" font-size="24" text-anchor="middle" fill="#93651f">前置条件：源数据已就绪；相关内存已完成预注册。</text>
+<polyline points="190,380 565,380" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="554.0924110039014,385.00244962915053 565,380 554.0924110039014,374.99755037084947" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="254.5" y="336" width="246.0" height="35" fill="#ffffff" stroke="#ffffff" stroke-width="2"/>
+<text x="377.5" y="358.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#315b8a">① BatchPut(keys, slices)</text>
+<polyline points="565,465 1315,465" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="1304.0924110039014,470.00244962915053 1315,465 1304.0924110039014,459.99755037084947" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="802.0" y="421" width="276.0" height="35" fill="#ffffff" stroke="#ffffff" stroke-width="2"/>
+<text x="940.0" y="443.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#28705f">② 外部 BatchPut：启动任务</text>
+<polyline points="1315,535 565,535" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
+<polyline points="575.9075889960986,529.9975503708495 565,535 575.9075889960986,540.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="825.5" y="491" width="229.0" height="35" fill="#ffffff" stroke="#ffffff" stroke-width="2"/>
+<text x="940.0" y="513.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#28705f">返回 OperationHandle</text>
+<polyline points="565,610 940,610" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="929.0924110039014,615.0024496291505 940,610 929.0924110039014,604.9975503708495" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="664.5" y="566" width="176.0" height="35" fill="#ffffff" stroke="#ffffff" stroke-width="2"/>
+<text x="752.5" y="588.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#315b8a">③ 原生 BatchPut</text>
+<polyline points="940,680 565,680" fill="none" stroke="#315b8a" stroke-width="2" stroke-dasharray="9 7"/>
+<polyline points="575.9075889960986,674.9975503708495 565,680 575.9075889960986,685.0024496291505" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="682.5" y="636" width="140.0" height="35" fill="#ffffff" stroke="#ffffff" stroke-width="2"/>
+<text x="752.5" y="658.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#315b8a">原生逐项结果</text>
+<polyline points="565,755 1315,755" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="1304.0924110039014,760.0024496291505 1315,755 1304.0924110039014,749.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="804.5078125" y="711" width="270.984375" height="35" fill="#ffffff" stroke="#ffffff" stroke-width="2"/>
+<text x="940.0" y="733.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#28705f">④ OperationHandle.Wait()</text>
+<polyline points="1315,825 565,825" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
+<polyline points="575.9075889960986,819.9975503708495 565,825 575.9075889960986,830.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="820.0" y="781" width="240.0" height="35" fill="#ffffff" stroke="#ffffff" stroke-width="2"/>
+<text x="940.0" y="803.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#28705f">外部逐项结果；访问结束</text>
+<polyline points="565,900 190,900" fill="none" stroke="#315b8a" stroke-width="2" stroke-dasharray="9 7"/>
+<polyline points="200.9075889960986,894.9975503708495 190,900 200.9075889960986,905.0024496291505" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="273.0" y="856" width="209.0" height="35" fill="#ffffff" stroke="#ffffff" stroke-width="2"/>
+<text x="377.5" y="878.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#315b8a">⑤ 返回原生 Put 结果</text>
+<text x="65" y="966.0" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="start" fill="#243746">原生失败也要等待已启动的外部任务；两路均停止访问后，调用方才能复用源内存。</text>
+</svg>

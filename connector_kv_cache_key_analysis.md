@@ -174,10 +174,44 @@ UCMConnector
   DramPool
 ```
 
-## 5. 复习要点
+## 5. 层号编码对比（逐层保存视角）
+
+vLLM 标准接口中，逐层保存走 `save_kv_layer()`，非逐层保存走 `wait_for_save()`。
+两条路径对"层"的编码方式不同：
+
+| 层级 | AscendStoreConnector | UCMConnector → DramStore |
+|---|---|---|
+| connector 内的块标识 | 字符串 key 中包含 layer_id，不同层不同 | 同一个 token 块共享 BlockId，层号单独传递 |
+| 区分层的方式 | `...@chunk_hash@layer_id` | `(BlockId, shard_index=layer_id)` |
+| 后端最终存储 key | 包含层号的字符串 | DramStore 将层及张量索引混入 BlockId，不同层最终 key 不同 |
+
+以同一个 token 块的第 0、1 层为例：
+
+```
+AscendStore：
+  第 0 层："...@块哈希@0"
+  第 1 层："...@块哈希@1"
+  → 不同层在 connector 侧就已经是不同的 key
+
+UCM connector：
+  第 0 层：(BlockId=A, shard_index=0)
+  第 1 层：(BlockId=A, shard_index=1)
+  → 不同层共享同一个 BlockId，靠分片索引区分
+
+DramStore 展开每层中的张量（见 4.3）：
+  shardId  = layer_id × tensorCount + tensorIndex
+  最终 key = StorageKey(BlockId, shardId)
+```
+
+结论：UCM 不同层的**原始 BlockId 相同**，但 "BlockId + 分片索引" 不同，最终在
+DramPool 中使用的 key 也不同——**不会把不同层的 KV 存到同一条记录里**。
+
+## 6. 复习要点
 
 1. **选 connector = 选 key 体系**：不是所有 connector 都接收同一种字符串
 2. AscendStore 路径：PoolKey 字符串全链路**原样透传**到 Mooncake `ObjectKey`（就是 `std::string`）
 3. UCM 路径：16 字节二进制 BlockId，层号走 shard index，DramStore 混入 shardId 后进 DramPool
-4. Mooncake `put` 部分失败只打日志不抛异常（缓存语义：失败 = 下次重算）
-5. 若实际部署选的是 KVPool connector，需核对它的后端适配层；不能直接套用 UCMConnector 的转换过程
+4. 层的区分：AscendStore 把层号拼进字符串（`@layer_id`）；UCM 各层共享 BlockId，
+   靠 shard_index 区分，经 DramStore 混入后最终 key 仍不同，不会串层
+5. Mooncake `put` 部分失败只打日志不抛异常（缓存语义：失败 = 下次重算）
+6. 若实际部署选的是 KVPool connector，需核对它的后端适配层；不能直接套用 UCMConnector 的转换过程

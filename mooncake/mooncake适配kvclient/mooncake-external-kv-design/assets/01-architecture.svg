@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900">
+<rect width="100%" height="100%" fill="white"/>
+<text x="50" y="56.0" font-family="Microsoft YaHei, sans-serif" font-size="30" text-anchor="start" fill="#243746">01  接入位置与模块职责</text>
+<text x="50" y="100.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="start" fill="#657583">实线表示调用；虚线框表示请求执行进程。外部对象不登记到 Master。</text>
+<rect x="40" y="225" width="960" height="610" fill="#f5f7f9" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
+<text x="450" y="262.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="start" fill="#243746">直接模式：推理进程 / Dummy 模式：Real 进程</text>
+<rect x="80" y="130" width="330" height="65" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="245.0" y="170.55" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#657583">应用 / DummyClient</text>
+<rect x="80" y="350" width="330" height="115" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="245.0" y="400.6" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">C++ Client</text>
+<text x="245.0" y="430.5" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">双写与结果汇合</text>
+<rect x="600" y="310" width="340" height="105" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="770.0" y="355.6" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">原生对象路径</text>
+<text x="770.0" y="385.5" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">Master RPC / TE 传输</text>
+<rect x="1120" y="155" width="320" height="95" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="1280.0" y="195.9" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">Master 服务</text>
+<text x="1280.0" y="224.5" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">目录 / 副本 / 租约</text>
+<rect x="1120" y="310" width="320" height="105" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="1280.0" y="370.55" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">原生内存池</text>
+<rect x="600" y="505" width="340" height="120" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="770.0" y="558.7" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">KVClientBackend</text>
+<text x="770.0" y="586.0" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">实现 ExternalStoreBackend</text>
+<rect x="600" y="705" width="340" height="95" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="770.0" y="745.9" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">完整 KVClient SDK</text>
+<text x="770.0" y="774.5" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">DHT / 注册 / 协议 / 完成</text>
+<rect x="1120" y="705" width="320" height="95" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="1280.0" y="760.55" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#28705f">外部 KV 存储</text>
+<polyline points="245,195 245,350" fill="none" stroke="#657583" stroke-width="2"/>
+<polyline points="239.99755037084947,339.09241100390136 245,350 250.00244962915053,339.09241100390136" fill="none" stroke="#657583" stroke-width="2"/>
+<text x="157.5" y="303.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#243746">C++ / IPC</text>
+<polyline points="410,385 490,385 490,363 600,363" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="589.0924110039014,368.00244962915053 600,363 589.0924110039014,357.99755037084947" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="940,335 1025,335 1025,202 1120,202" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="1109.0924110039014,207.00244962915053 1120,202 1109.0924110039014,196.99755037084947" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="940,363 1120,363" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="1109.0924110039014,368.00244962915053 1120,363 1109.0924110039014,357.99755037084947" fill="none" stroke="#315b8a" stroke-width="2"/>
+<text x="1070.5" y="400.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#315b8a">TE 传输</text>
+<polyline points="410,430 500,430 500,565 600,565" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="589.0924110039014,570.0024496291505 600,565 589.0924110039014,559.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
+<text x="412.5" y="510.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#28705f">接口调用</text>
+<text x="412.5" y="536.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="middle" fill="#28705f">不经过 TE</text>
+<polyline points="770,625 770,705" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="764.9975503708495,694.0924110039014 770,705 775.0024496291505,694.0924110039014" fill="none" stroke="#28705f" stroke-width="2"/>
+<text x="875.0" y="668.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">SDK 公共 API</text>
+<polyline points="940,752 1120,752" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="1109.0924110039014,757.0024496291505 1120,752 1109.0924110039014,746.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
+<text x="1032.5" y="729.0" font-family="Microsoft YaHei, sans-serif" font-size="19" text-anchor="middle" fill="#28705f">请求 / 响应</text>
+<text x="70" y="871.0" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="start" fill="#243746">Backend 是可替换实现：换成 DPUBackend 时，Client 仍调用同一组对象接口。</text>
+</svg>

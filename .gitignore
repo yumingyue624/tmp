@@ -1,0 +1,4 @@
+# embedded unified-cache-management clones (backed up via their own remotes)
+/ucm-grafana-pool-utilization/
+/ucm_perf_batch512/
+/ucm_perf_batch512_push/
