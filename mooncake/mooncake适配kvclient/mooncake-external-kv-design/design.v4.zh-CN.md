@@ -32,7 +32,7 @@ Mooncake 原生内存副本淘汰后，外部缓存仍可保留 KVCache，降低
 
 ## 2. ExternalStoreBackend 接口设计
 
-
+### 2.1 ExternalStoreBackend 接口定义
 
 ```cpp
 class ExternalStoreBackend {
@@ -84,36 +84,108 @@ public:
 
 Put/Remove 的逐项结果只表达成功或 ErrorCode，成功无附加字段。IsReady 表示完成，不代表成功。Wait 的超时、取消和析构契约尚未确定，影响同步返回后的内存安全，见第 5 节。读侧结果结构由读侧模块定义。
 
+### 2.2 KvclientBackend 实现
+#### 2.2.1 key处理
+
+1）Mooncake key格式
+
+AscendStoreConnector 生成字符串 key，原样透传至Mooncake
+
+```python
+def to_string(self):
+    return (
+        f"{self.key_metadata.model_name}"
+        f"@pcp{self.key_metadata.pcp_rank}@dcp{self.key_metadata.dcp_rank}"
+        f"@head_or_tp_rank:{self.key_metadata.head_or_tp_rank}"
+        f"@pp_rank:{self.key_metadata.pp_rank}@{self.chunk_hash}"
+    )
+```
+
+各字段含义：
+
+- `model_name`：不同模型天然隔离
+- `pcp/dcp rank`：pipeline-context / data-context parallel rank
+- `head_or_tp_rank`：同一条 prompt 在不同 TP rank 上的 KV 分片用这个区分
+- `chunk_hash`：块内容哈希，**前缀缓存复用的本体**
+- 层号（layerwise 模式）：`LayerPoolKey.to_string()`在此基础上追加 `@{layer_id}` 后缀
+
+2）Mooncake key对tenant的处理
+
+tenant直接用于master service的索引
+```
+Python: store.setup(..., tenant_id="team-a")
+  ↓
+RealClient::setup_internal(..., tenant_id)
+  └─ 未显式传入时：tenant_id = get_config(config, "tenant_id", "default")
+  ↓
+MasterService::PutStart(client_id, key, tenant_id, ...)
+  ↓
+元数据存储: shard->tenants[tenant_id].metadata[key]
+```
+
+一些场景把 tenant 拼接入 key，例如soft-pin 索引：
+```
+
+std::unordered_map<std::string, Registration> registrations_;  // key 就是 scoped_key
+
+const auto scoped_key = metadata.tenant_id.MakeScopedKey(metadata.user_key);
+
+std::string MakeScopedKey(std::string_view local_key) const {
+        std::string scoped_key;
+        scoped_key.reserve(value_.size() + local_key.size() + 1);
+        scoped_key.append(value_);
+        scoped_key.push_back(kScopedKeySeparator);
+        scoped_key.append(local_key);
+        return scoped_key;
+    }
+```
+3）KvClientBackend key的构建
+```
+KVBuffer {
+    key;
+    buffer {
+        region { memoryType, addr, size, deviceId, numaNode };
+        handle;
+    };
+    offset;
+    mrKey;
+}
+```
+
+| KVBuffer 字段 | Mooncake 字段处理 |
+| --- | --- |
+| key | MakeScopedKey 哈希 |
+| buffer.region.addr | Slice.ptr |
+| buffer.region.size | Slice.size |
+| offset | 固定填充 0。同一 key 下前面所有 slice 长度之和，需要 512 位对齐，由于 mooncake 的 key 已经携带了 layer、tp 等信息，所以可直接填充 0。 |
+| deviceId | PointerInfo.device_id |
+| numaNode | 无需填充 |
+| memoryType | 根据接口传入的内存决定，例如RealClient::put_from接口填DEVICE，RealClient::put接口填HOST |
+| buffer.handle / mrKey | handle 由注册时拿到，mrKey 由 KvClient 填充 |
+
 ## 3. 关键流程
 
-### 3.1 初始化
+### 3.1 双写
 
-注册资源随内存分配或 IPC 导入建立，并在多次 Put/Get 间复用。
+一、接口支持情况
 
-![图 2：预注册与操作复用](assets/02-registration.png)
+| 接口 | 是否接入 backend | 处理方式 | 入参 | 行为 | 使用场景 / 调用者 |
+| --- | --- | --- | --- | --- | --- |
+| `Client::Put(key, slices, config)` | 是 | 外部 Put 提交 → 原生 Put → Wait 外部结果 | key + `std::vector<Slice>` | PutStart 分配副本，传输，PutEnd 提交 | `RealClient::put`、`put_from`、`put_parts` 等最终走这里 |
+| `Client::BatchPut(keys, batched_slices, config)` | 是 | 委托带 stager 的重载，由共同实现完成双写，避免重复提交 | 多 key + 每个 key 的 slices | 批量分配、传输、提交 | `RealClient::put_batch`、`batch_put_from`、`batch_put_from_multi_buffers` |
+| `Client::BatchPut(keys, batched_slices, config, WriteBufferStager)` | 是 | 外部 BatchPut 提交 → 原生批量写 → Wait；外部源须可访问且已注册，不能直接假定原生 staging buffer 可用 | 同上 + stager | 非本地 buffer 可先 staged 到内部 buffer | 源 buffer 不能被 TransferEngine 直接 DMA；RealClient 的 `stage_nonlocal=true` 路径 |
+| `Client::Upsert / BatchUpsert` | 暂定 | 待确认 ASU 覆盖语义，若store支持覆盖则支持 | key(s) + slices | 存在则更新，不存在则插入 | upsert 系列 |
+| `Client::TransferWriteRange(replica, slices, dst_offset)` | 否 | 范围传输，在Client层无key，上层RealClient有key但语义不合适 | 已缓存的副本描述 + slices + 目标偏移 | 往已有 memory replica 的指定区间写 | Put session 的分段写 |
+| `Client::BatchTransferWriteRanges(...)` | 否 | 范围传输，在Client层无key，上层RealClient有key但语义不合适 | 多副本 + 多 slices + 多偏移 | 批量区间写 | Put session 批量分段写 |
+| `Client::StartBatchPutForSizes(keys, sizes, config)` | 否 | 只有对象大小，没有源 buffer | keys + 对象大小 | 只做批量写的分配阶段，预留副本空间 | Put session start |
+| `Client::BatchPutEnd(object_metas, replica_type)` | 否 | 只有元数据，没有源 buffer | 对象元数据 + 副本类型 | 提交 Put session | Put session end |
+| `Client::BatchPutRevoke(keys, replica_type)` | 否 | 原生预留副本的撤销；外部 session 撤销语义待定义 | keys + 副本类型 | 撤销 Put session | Put session revoke |
 
-*图 2：直接模式与 Dummy/Real 在注册阶段归一，Put/Get 只复用记录。[Excalidraw](assets/02-registration.excalidraw)*
+Mooncake 将分阶段写入能力通过 `StartBatchPutForSizes` 等接口暴露给上层，由推理引擎编排各阶段调用，Mooncake 内部未调用这几个接口完成整个写入流程。
 
-| 阶段 | 动作 | 失败处理 |
-| --- | --- | --- |
-| 创建 backend | 初始化完整 SDK，绑定本地设备/context | 默认启动失败；可显式选择 native-only 并暴露状态 |
-| 准备地址 | 直接模式取本进程地址；Dummy 模式由 Real 导入 IPC | 导入失败不注册，不把 Dummy 裸地址交给 SDK |
-| RegisterRegions | 建立 TE 和 SDK 各自的注册；保存 MRHandle/映射引用 | 回滚该调用新建的资源；回滚失败的记录隔离，不能提前释放映射 |
-| 发布可用记录 | 标记区域可供外部操作使用 | 半完成记录不得作为双写就绪区域 |
-| UnregisterRegions | 禁止新引用 → 等两路在途结束 → 注销 → 关闭 IPC | 未确认访问结束，不继续释放依赖资源 |
+多 slices 的整对象 Put 一次提交完整对象；Put session 则跨多次调用写入区间。范围写接口不携带对象 key 和完整提交状态，不能直接映射为外部 Store。
 
-**注册表归属：** 直接模式在推理进程；Dummy/Real 在 Real。记录至少包括设备、分配身份/代际、基址/容量、SDK context、MRHandle、IPC lease 和在途计数。
-
-| HBM 组织 | MRHandle 关系 |
-| --- | --- |
-| 同 NPU 的独立分配 A、B | 分别注册，各有 handle |
-| 同一已注册池 P 的多个子块 | 共用 handle，以源范围区分 |
-| 不同设备同数值地址 / 地址被重新分配复用 | 必须区分设备与分配代际，不能按地址去重 |
-
-SDK 根据注册 handle 在自身表中填 mrKey，不能复用 TE 凭据。Get/Put 从已绑定 context 中查完整覆盖 Slice 的注册区域；缺失或歧义就报错。SDK 单实例任意多卡能力未证实，建议 backend 内按设备管理 context，并做硬件验证。
-
-### 3.2 双写
-
+二、双写实现
 ![图 3：双写时序](assets/03-dual-put.png)
 
 *图 3：先外部 BatchPut，再原生 BatchPut，最后 Wait。[Excalidraw](assets/03-dual-put.excalidraw)*
@@ -126,6 +198,11 @@ if (external) {
 }
 return native_results;
 ```
+* 调用KvClient::StoreAsync时无需传入eventHandle：
+由于AscendStoreConnector 在调用 Store 前先会等待 NPU event。 因此 Store 参数没有 eventHandle，也能在这条调用链中拿到已就绪的数据。
+    1. 记录 event：在 save_kv_layer / wait_for_save 里对当前计算流 torch.npu.Event().record()（layerwise 时每层 record 一次）。
+    2. 处理线程里等待：event 随请求传给后台发送线程，线程在调用 Mooncake 前执行 current_event.synchronize()
+    3. 等待event结束后再 put：self.m_store.put(...) → MooncakeBackend.put → batch_put_from_multi_buffers。
 
 异常路径与正常路径共用任务收敛逻辑：原生 Put 失败或抛异常，仍需等待已启动的外部任务结束访问。源就绪由调用方保证；AscendStore 普通路径在发送线程等待 NPU event 后调用 Store，layerwise 的事件依赖尚需验证。
 
@@ -138,7 +215,7 @@ return native_results;
 
 **返回前提：两路停止访问源。** 同步 backend 可在提交时完成；异步 backend 与原生路径重叠。不允许同时访问源的设备组合必须串行或拒绝，不能仅凭“源不修改”推断并发合法。外部失败不改变成功结果，但可能增加同步等待时间。
 
-### 3.3 删除
+### 3.2 删除
 
 ![图 4：删除分支](assets/v4/04-delete.png)
 
@@ -183,7 +260,7 @@ E01—E10 标识各类异常及其验证用例。标为**阻塞项**的能力或
 | E07 读取策略 | 建议默认 native-first；自定义策略配并行查询；缺位置/网络字段标 Unknown，策略异常回退默认 | content_tag/长度冲突报错；目标重叠预检查拒绝；策略元数据封装待对齐；T07 |
 | E08 删除部分失败 | 按 3.3 分支；Master 缺记录仍删外部，原生条件拒绝不删外部；逐项记录完成阶段 | 部分失败/重建时的幂等及代际保护为阻塞项；T08 |
 | E09 SDK 初始化失败 | 建议默认启动失败；仅显式配置允许 native-only，向调用方/运维暴露原因与 effective_mode | 运行中外部失联不静默变 miss；区域注册失败不能标为外部就绪；T09 |
-| E10 超时与退出 | 结果超时与访问停止分开；退出先停新请求，再收敛任务、注销、关映射 | 当前 Wait 超时移除任务；有界停止访问保证、取消及析构语义为阻塞项；T10 |
+| E10 超时与退出 | 结果超时与访问停止分开；ASU 达到 maxErrorCount 后触发断链；退出先收敛任务再注销、关映射 | 单次超时未必达到断链阈值；断链完成与停止访问的保证须验证，见 5.2；T10 |
 
 ### 5.1 查询、重试与预算
 
@@ -201,6 +278,22 @@ E01—E10 标识各类异常及其验证用例。标为**阻塞项**的能力或
 ### 5.2 内存安全底线
 
 **Wait 超时，不代表远端已停止访问。** 后台持有 MR/映射引用只能维持注册资源，不能保证调用方修改或复用 payload 的安全性。同步 API 返回前，必须取得访问完成或远端访问权限已撤销的依据。当前接口尚未定义有界取消与停止访问机制，该保证为启用前阻塞项。
+
+**ASU 断链计数范围。** ASU 对连接上的传输类错误累计计数，达到配置项 `maxErrorCount` 后触发断链。该机制用于故障连接收敛，不作为其他 backend 的通用要求。
+
+| 失败情况 | 是否增加断链计数 |
+| --- | --- |
+| CQE 内部错误 `CQE_INTERNAL_ERROR` | 是 |
+| CQE IO 超时 `CQE_IO_TIMEOUT` | 是 |
+| SDK 传输任务执行超时 `TIMEOUT` | 是 |
+| 底层 `Send` 返回失败 | 是 |
+| key 不存在 | 否 |
+| 资源忙 `CQE_RESOURCE_BUSY` | 否 |
+| 超出创建容量 `CQE_OUT_OF_CREATE_SIZE` | 否 |
+| 介质写错误 `CQE_WRITE_FAULT` | 否，当前未纳入 |
+| 不可恢复读错误 `CQE_UNRECOVERED_READ_ERROR` | 否，当前未纳入 |
+
+Wait 超时后，须等待任务停止访问，或确认断链清理已撤销在途访问，再释放任务及注册资源、允许调用方复用 buffer。**未达到断链阈值、仅发起断链或仅删除任务记录，均不能作为访问停止依据。** 断链完成是否保证设备不再访问内存，须通过对应设备与协议组合验证。
 
 正常退出顺序：**停止新请求 → 区域禁用新引用 → 在统一 deadline 内收敛两路访问 → 注销 SDK/TE → 关闭 IPC → 销毁 SDK**。无法证明访问已停止的组合不得宣称满足安全有界返回；进程崩溃/断链同样需要设备级故障注入验证。
 
@@ -236,7 +329,7 @@ P0 表示错误数据、越界或提前释放风险；P1 表示一致性/可用�
 | T07 | 缺失位置/tag、策略异常、非法候选、重叠目标 | 按约定回退/报错；重叠批次零派发；内容冲突不被掩盖 |
 | T08 | 原生租约拒绝、Master NotFound、外部删除失败、删除后重建再重试 | 拒绝时外部调用数为 0；缺失仍删外部；不误删新对象 |
 | T09 | SDK/目录/注册初始化故障；运行中外部失联 | 启动/降级显式可见；无外部假就绪或假 miss |
-| T10 | Wait 超时、迟到完成、断链、Dummy/Real 退出与崩溃 | 可追踪在途任务；无迟到非法访问；退出预算和安全释放均有证据 |
+| T10 | Wait 超时、迟到完成；ASU 未达/达到 maxErrorCount、各错误计数分支；断链清理；Dummy/Real 退出与崩溃 | 计数与 5.2 一致；未达阈值不提前释放；达到阈值触发断链，确认无在途访问后才回收；退出预算与安全释放均有证据 |
 
 ### 6.3 分阶段执行
 
