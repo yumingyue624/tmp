@@ -1,4 +1,4 @@
-# Mooncake 接入 KVClient 双写&delete 模块设计
+# mooncake接入kvclient put及remove模块设计
 
 **版本：v4｜日期：2026-10-22｜状态：模块设计评审**
 
