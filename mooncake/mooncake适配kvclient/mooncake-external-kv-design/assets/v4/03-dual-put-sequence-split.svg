@@ -17,78 +17,78 @@
 <rect x="1680" y="145" width="300" height="60" fill="#fff6e7" stroke="#93651f" stroke-width="2"/>
 <text x="1830.0" y="182.35" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#93651f">原生 Master + TE</text>
 <polyline points="1830,205 1830,2320" fill="none" stroke="#93651f" stroke-width="2" stroke-dasharray="9 7"/>
-<text x="370.0" y="256.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#315b8a">Put / BatchPut</text>
+<text x="370.0" y="256.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#315b8a">1. Put / BatchPut</text>
 <polyline points="170,270 570,270" fill="none" stroke="#315b8a" stroke-width="2"/>
 <polyline points="559.0924110039014,275.00244962915053 570,270 559.0924110039014,264.99755037084947" fill="none" stroke="#315b8a" stroke-width="2"/>
 <polyline points="570,305 635,305 635,337 570,337" fill="none" stroke="#315b8a" stroke-width="2"/>
 <polyline points="580.9075889960986,331.99755037084947 570,337 580.9075889960986,342.00244962915053" fill="none" stroke="#315b8a" stroke-width="2"/>
-<text x="650" y="323.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#315b8a">校验 key / slices、对象总长</text>
-<text x="650" y="346.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#315b8a">同 key 排序；保留原始下标</text>
-<text x="770.0" y="461.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">Put / BatchPut</text>
+<text x="650" y="323.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#315b8a">2. 校验 key 与 slices 的对应关系</text>
+<text x="650" y="346.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#315b8a">保留批量输入顺序</text>
+<text x="770.0" y="461.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">3. Put / BatchPut</text>
 <polyline points="570,475 970,475" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="959.0924110039014,480.00244962915053 970,475 959.0924110039014,469.99755037084947" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="970,505 1035,505 1035,537 970,537" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="980.9075889960986,531.9975503708495 970,537 980.9075889960986,542.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
-<text x="1050" y="523.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">tenant + 字符串 key → SDK key</text>
-<text x="1050" y="546.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">查注册句柄，构造 KVBuffer</text>
-<text x="1170.0" y="706.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">StoreAsync / BatchStoreAsync</text>
+<text x="1050" y="523.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">4. tenant + 字符串 key → SDK key</text>
+<text x="1050" y="546.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">查 MRHandle，构造 KVBuffer</text>
+<text x="1170.0" y="706.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">5. StoreAsync / BatchStoreAsync</text>
 <polyline points="970,720 1370,720" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="1359.0924110039014,725.0024496291505 1370,720 1359.0924110039014,714.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="430,755 1580,755 1580,1255 430,1255 430,755" fill="none" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
 <text x="442" y="783.0" font-family="Microsoft YaHei, sans-serif" font-size="19" text-anchor="start" fill="#657583">alt  SDK 接受请求（含可追踪的部分提交）</text>
-<text x="1170.0" y="826.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">TaskId</text>
+<text x="1170.0" y="826.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">6a. TaskId</text>
 <polyline points="1370,840 970,840" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="980.9075889960986,834.9975503708495 970,840 980.9075889960986,845.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="970,860 1035,860 1035,892 970,892" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="980.9075889960986,886.9975503708495 970,892 980.9075889960986,897.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
-<text x="1050" y="878.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">以 TaskId 构造 OperationHandle</text>
+<text x="1050" y="878.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">7. 以 TaskId 构造 OperationHandle</text>
 <text x="1050" y="901.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">保存 SDK 上下文与批量下标</text>
-<text x="770.0" y="961.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">OperationHandle</text>
+<text x="770.0" y="961.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">8a. OperationHandle</text>
 <polyline points="970,975 570,975" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="580.9075889960986,969.9975503708495 570,975 580.9075889960986,980.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="430,1005 1580,1005" fill="none" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
 <text x="442" y="1032.0" font-family="Microsoft YaHei, sans-serif" font-size="19" text-anchor="start" fill="#657583">else  提交失败，且没有在途任务</text>
-<text x="1170.0" y="1066.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#ad3434">提交错误</text>
+<text x="1170.0" y="1066.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#ad3434">6b. 提交错误</text>
 <polyline points="1370,1080 970,1080" fill="none" stroke="#ad3434" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="980.9075889960986,1074.9975503708495 970,1080 980.9075889960986,1085.0024496291505" fill="none" stroke="#ad3434" stroke-width="2"/>
-<text x="770.0" y="1131.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#ad3434">提交错误（无句柄）</text>
+<text x="770.0" y="1131.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#ad3434">8b. 提交错误（无句柄）</text>
 <polyline points="970,1145 570,1145" fill="none" stroke="#ad3434" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="580.9075889960986,1139.9975503708495 570,1145 580.9075889960986,1150.0024496291505" fill="none" stroke="#ad3434" stroke-width="2"/>
 <polyline points="570,1200 635,1200 635,1232 570,1232" fill="none" stroke="#ad3434" stroke-width="2"/>
 <polyline points="580.9075889960986,1226.9975503708495 570,1232 580.9075889960986,1237.0024496291505" fill="none" stroke="#ad3434" stroke-width="2"/>
-<text x="650" y="1218.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#ad3434">记录外部失败</text>
+<text x="650" y="1218.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#ad3434">8b.1. 记录外部失败</text>
 <text x="650" y="1241.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#ad3434">继续原生写入</text>
-<text x="1200.0" y="1301.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#93651f">原生 Put / BatchPut：分配 → 传输 → 提交</text>
+<text x="1200.0" y="1301.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#93651f">9. 原生 Put / BatchPut：分配 → 传输 → 提交</text>
 <polyline points="570,1315 1830,1315" fill="none" stroke="#93651f" stroke-width="2"/>
 <polyline points="1819.0924110039014,1320.0024496291505 1830,1315 1819.0924110039014,1309.9975503708495" fill="none" stroke="#93651f" stroke-width="2"/>
-<text x="1200.0" y="1376.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#93651f">原生逐项结果 / 错误</text>
+<text x="1200.0" y="1376.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#93651f">10. 原生逐项结果 / 错误</text>
 <polyline points="1830,1390 570,1390" fill="none" stroke="#93651f" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="580.9075889960986,1384.9975503708495 570,1390 580.9075889960986,1395.0024496291505" fill="none" stroke="#93651f" stroke-width="2"/>
 <polyline points="430,1430 1580,1430 1580,1930 430,1930 430,1430" fill="none" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
 <text x="442" y="1458.0" font-family="Microsoft YaHei, sans-serif" font-size="19" text-anchor="start" fill="#657583">opt  已获得 OperationHandle：原生失败 / 异常也必须执行 Wait</text>
-<text x="770.0" y="1496.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">OperationHandle::Wait()</text>
+<text x="770.0" y="1496.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">11. OperationHandle::Wait()</text>
 <polyline points="570,1510 970,1510" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="959.0924110039014,1515.0024496291505 970,1510 959.0924110039014,1504.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
-<text x="1170.0" y="1566.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">Wait(TaskId, timeout)</text>
+<text x="1170.0" y="1566.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">12. Wait(TaskId, timeout)</text>
 <polyline points="970,1580 1370,1580" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="1359.0924110039014,1585.0024496291505 1370,1580 1359.0924110039014,1574.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
-<text x="1170.0" y="1636.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">任务结果 / 超时</text>
+<text x="1170.0" y="1636.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">13. 任务结果 / 超时</text>
 <polyline points="1370,1650 970,1650" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="980.9075889960986,1644.9975503708495 970,1650 980.9075889960986,1655.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="790,1680 1570,1680 1570,1860 790,1860 790,1680" fill="none" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
 <text x="802" y="1708.0" font-family="Microsoft YaHei, sans-serif" font-size="19" text-anchor="start" fill="#657583">opt  外部执行失败或超时</text>
 <polyline points="970,1740 1035,1740 1035,1772 970,1772" fill="none" stroke="#ad3434" stroke-width="2"/>
 <polyline points="980.9075889960986,1766.9975503708495 970,1772 980.9075889960986,1777.0024496291505" fill="none" stroke="#ad3434" stroke-width="2"/>
-<text x="1050" y="1758.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#ad3434">失败：保存逐项错误</text>
+<text x="1050" y="1758.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#ad3434">14. 失败：保存逐项错误</text>
 <text x="1050" y="1781.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#ad3434">超时：确认访问停止后才收敛</text>
-<text x="770.0" y="1891.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">外部逐项结果</text>
+<text x="770.0" y="1891.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">15. 外部逐项结果</text>
 <polyline points="970,1905 570,1905" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="580.9075889960986,1899.9975503708495 570,1905 580.9075889960986,1910.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="570,1980 635,1980 635,2012 570,2012" fill="none" stroke="#315b8a" stroke-width="2"/>
 <polyline points="580.9075889960986,2006.9975503708495 570,2012 580.9075889960986,2017.0024496291505" fill="none" stroke="#315b8a" stroke-width="2"/>
-<text x="650" y="1998.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#315b8a">按 key 汇合两侧结果</text>
+<text x="650" y="1998.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#315b8a">16. 按 key 汇合两侧结果</text>
 <text x="650" y="2021.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#315b8a">至少一端成功即该 key 成功</text>
-<text x="370.0" y="2096.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#315b8a">返回逐 key 合并结果</text>
+<text x="370.0" y="2096.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#315b8a">17. 返回逐 key 合并结果</text>
 <polyline points="570,2110 170,2110" fill="none" stroke="#315b8a" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="180.9075889960986,2104.9975503708492 170,2110 180.9075889960986,2115.0024496291503" fill="none" stroke="#315b8a" stroke-width="2"/>
 <rect x="70" y="2180" width="1880" height="105" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>

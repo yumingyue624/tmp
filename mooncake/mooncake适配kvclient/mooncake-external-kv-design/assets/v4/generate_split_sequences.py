@@ -19,6 +19,10 @@ def start(name, title, subtitle, height):
 
 
 def msg(f,a,b,y,label,color='blue',reply=False):
+    put_steps={270:'1',345:'3',420:'5',540:'6a',605:'8a',710:'6b',775:'8b',945:'9',1020:'10',1140:'11',1210:'12',1280:'13',1535:'15',1740:'17'}
+    delete_steps={270:'1',345:'3',420:'5',540:'6a',605:'8a',710:'6b',775:'8b',875:'9',995:'10a',1120:'10b',1260:'10c',1460:'11',1530:'12',1600:'13',1840:'15',2040:'17'}
+    steps=put_steps if f.name.startswith('03-') else delete_steps
+    label=steps[y]+'. '+label
     lo,hi=sorted([X[a],X[b]])
     f.text(lo+8,y-32,hi-lo-16,28,label,18,C[color])
     f.arrow([(X[a],y),(X[b],y)],color,dashed=reply)
@@ -35,6 +39,8 @@ def sep(f,y,label,left=430,right=1580):
 
 
 def local(f,a,y,label,color='blue',w=360):
+    steps={305:'2',375:'4',560:'7',830:'8b.1',1370:'14',1610:'16',1680:'14',1930:'16'}
+    label=steps[y]+'. '+label
     # A self-message makes error handling part of the sequence, rather than a note box.
     x=X[a]
     f.arrow([(x,y),(x+65,y),(x+65,y+32),(x,y+32)],color)
@@ -62,9 +68,9 @@ def export_expanded(f):
 f=start('03-dual-put-sequence-split','双写时序：外部提交失败与执行失败分别处理',
         '实线：调用；虚线：返回；红色：错误路径；alt / opt：条件执行。Put 与 BatchPut 采用相同编排。',2040)
 msg(f,0,1,270,'Put / BatchPut')
-local(f,1,305,'校验 key / slices、对象总长\n同 key 排序；保留原始下标','blue',500)
+local(f,1,305,'校验 key 与 slices 的对应关系\n保留批量输入顺序','blue',500)
 msg(f,1,2,345,'Put / BatchPut','green')
-local(f,2,375,'tenant + 字符串 key → SDK key\n查注册句柄，构造 KVBuffer','green',560)
+local(f,2,375,'tenant + 字符串 key → SDK key\n查 MRHandle，构造 KVBuffer','green',560)
 msg(f,2,3,420,'StoreAsync / BatchStoreAsync','green')
 branch(f,455,430,'alt  SDK 接受请求（含可追踪的部分提交）')
 msg(f,3,2,540,'TaskId','green',True)

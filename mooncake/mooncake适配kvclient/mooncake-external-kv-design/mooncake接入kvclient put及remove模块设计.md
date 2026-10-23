@@ -52,37 +52,35 @@ public:
     virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> BatchRemove(
         const std::vector<ObjectKey>& keys) = 0;
 
-    virtual tl::expected<void, ErrorCode> RegisterRegions(
-        const std::vector<MemoryRegion>& regions,
-        std::vector<std::shared_ptr<const StorageBuffer>>& registered_regions) = 0;
-
-    virtual tl::expected<void, ErrorCode> UnregisterRegions(
-        const std::vector<std::shared_ptr<const StorageBuffer>>& regions) = 0;
 };
 ```
 
-对象操作返回 OperationHandle，KVClientBackend 异步完成，其他 backend 可以同步完成。Put、BatchPut、Remove、BatchRemove 分别由具体 backend 实现。
-
-ObjectKey、Slice、ErrorCode 复用 Mooncake 类型。`keys[i] ↔ batched_slices[i]`，内层 slices 按序组成一个对象；长度检查求和。backend 保存异步任务所需的描述，不能修改原生路径的描述容器，也不复制 payload。
+对象操作返回 OperationHandle，KVClientBackend 异步完成，其他 backend 可以同步完成。
 
 ```cpp
 class OperationHandle {
 public:
     virtual ~OperationHandle() = default;
-    virtual bool IsReady() const = 0;
-    virtual std::vector<tl::expected<void, ErrorCode>> Wait() = 0;
 };
 ```
 
-| backend 类型 | OperationHandle 实现 |
-| --- | --- |
-| KVClient | 内部持有 SDK context、TaskId、原下标映射和结果 |
-| DPU 等其他实现 | 可用回调或自身完成状态，不要求数字 TaskId |
-| 同步 backend | 返回已完成句柄；Wait 立即返回 |
+**KVClient 派生句柄**
 
-**提交结果与执行结果分离：** 提交 expected 有值表示获得可追踪句柄；Wait 才给出逐项结果。部分请求已派发时必须返回句柄，不能只返回错误而遗失在途任务。结果数量/顺序与输入一致。
+KVClientBackend 定义 `KVClientOperationHandle`，继承 OperationHandle，封装 SDK TaskId
 
-Put/Remove 的逐项结果只表达成功或 ErrorCode，成功无附加字段。IsReady 表示完成，不代表成功。Wait 的超时、取消和析构契约尚未确定，影响同步返回后的内存安全，见第 5 节。读侧结果结构由读侧模块定义。
+```cpp
+class KVClientOperationHandle final : public OperationHandle {
+public:
+    bool IsReady() const override;
+    std::vector<tl::expected<void, ErrorCode>> Wait() override;
+
+private:
+    std::shared_ptr<kv::KvClient> sdk_;
+    kv::TaskId task_id_;
+    uint64_t timeout_ms_;
+    std::vector<tl::expected<void, ErrorCode>> results_;
+};
+```
 
 ### 2.2 KvclientBackend 实现
 #### 2.2.1 key处理
@@ -169,17 +167,15 @@ KVBuffer {
 
 一、接口支持情况
 
-ExternalStoreBackend 列表示公共抽象能否承载该语义，包含需扩展的能力，不代表第 2 节已提供全部方法；KVClientBackend 列按当前已确认的适配能力标注，未确认能力记为“否”，原因见处理方式。
 
 <table>
 <thead>
 <tr>
 <th rowspan="2">接口</th>
-<th colspan="3">接口支持</th>
+<th colspan="2">接口支持</th>
 <th colspan="3">原接口功能</th>
 </tr>
 <tr>
-<th>ExternalStoreBackend 是否支持</th>
 <th>KVClientBackend 是否支持</th>
 <th>处理方式</th>
 <th>入参</th>
@@ -188,15 +184,14 @@ ExternalStoreBackend 列表示公共抽象能否承载该语义，包含需扩�
 </tr>
 </thead>
 <tbody>
-<tr><td><code>Client::Put(key, slices, config)</code></td><td>是</td><td>是</td><td>外部 Put 提交 → 原生 Put → Wait 外部结果</td><td>key + <code>std::vector&lt;Slice&gt;</code></td><td>PutStart 分配副本，传输，PutEnd 提交</td><td><code>RealClient::put</code>、<code>put_from</code>、<code>put_parts</code> 等最终走这里</td></tr>
-<tr><td><code>Client::BatchPut(keys, batched_slices, config)</code></td><td>是</td><td>是</td><td>委托带 stager 的重载，由共同实现完成双写，避免重复提交</td><td>多 key + 每个 key 的 slices</td><td>批量分配、传输、提交</td><td><code>RealClient::put_batch</code>、<code>batch_put_from</code>、<code>batch_put_from_multi_buffers</code></td></tr>
-<tr><td><code>Client::BatchPut(keys, batched_slices, config, WriteBufferStager)</code></td><td>是</td><td>是</td><td>外部 BatchPut 提交 → 原生批量写 → Wait；外部源须可访问且已注册，不能直接假定原生 staging buffer 可用</td><td>同上 + stager</td><td>非本地 buffer 可先 staged 到内部 buffer</td><td>源 buffer 不能被 TransferEngine 直接 DMA；RealClient 的 <code>stage_nonlocal=true</code> 路径</td></tr>
-<tr><td><code>Client::Upsert / BatchUpsert</code></td><td>是</td><td>是</td><td>外部 Put / BatchPut 提交 → 原生 Upsert / BatchUpsert → Wait；KVClient Store 支持同 key 覆盖写，不因 key 已存在报错</td><td>key(s) + slices</td><td>存在则更新，不存在则插入</td><td>upsert 系列</td></tr>
-<tr><td><code>Client::TransferWriteRange(replica, slices, dst_offset)</code></td><td>是</td><td>否</td><td>范围传输，在Client层无key，上层RealClient有key但语义不合适</td><td>已缓存的副本描述 + slices + 目标偏移</td><td>往已有 memory replica 的指定区间写</td><td>Put session 的分段写</td></tr>
-<tr><td><code>Client::BatchTransferWriteRanges(...)</code></td><td>是</td><td>否</td><td>范围传输，在Client层无key，上层RealClient有key但语义不合适</td><td>多副本 + 多 slices + 多偏移</td><td>批量区间写</td><td>Put session 批量分段写</td></tr>
-<tr><td><code>Client::StartBatchPutForSizes(keys, sizes, config)</code></td><td>是</td><td>否</td><td>只有对象大小，没有源 buffer</td><td>keys + 对象大小</td><td>只做批量写的分配阶段，预留副本空间</td><td>Put session start</td></tr>
-<tr><td><code>Client::BatchPutEnd(object_metas, replica_type)</code></td><td>是</td><td>否</td><td>只有元数据，没有源 buffer</td><td>对象元数据 + 副本类型</td><td>提交 Put session</td><td>Put session end</td></tr>
-<tr><td><code>Client::BatchPutRevoke(keys, replica_type)</code></td><td>是</td><td>否</td><td>原生预留副本的撤销；外部 session 撤销语义待定义</td><td>keys + 副本类型</td><td>撤销 Put session</td><td>Put session revoke</td></tr>
+<tr><td><code>Client::Put(key, slices, config)</code></td><td>是</td><td>外部 Put 提交 → 原生 Put → Wait 外部结果</td><td>key + <code>std::vector&lt;Slice&gt;</code></td><td>PutStart 分配副本，传输，PutEnd 提交</td><td><code>RealClient::put</code>、<code>put_from</code>、<code>put_parts</code> 等最终走这里</td></tr>
+<tr><td><code>Client::BatchPut(keys, batched_slices, config)</code></td><td>是</td><td>委托带 stager 的重载，由共同实现完成双写，避免重复提交</td><td>多 key + 每个 key 的 slices</td><td>批量分配、传输、提交</td><td><code>RealClient::put_batch</code>、<code>batch_put_from</code>、<code>batch_put_from_multi_buffers</code></td></tr>
+<tr><td><code>Client::BatchPut(keys, batched_slices, config, WriteBufferStager)</code></td><td>是</td><td>外部 BatchPut 提交 → 原生批量写 → Wait；外部源须可访问且已注册，不能直接假定原生 staging buffer 可用</td><td>同上 + stager</td><td>非本地 buffer 可先 staged 到内部 buffer</td><td>源 buffer 不能被 TransferEngine 直接 DMA；RealClient 的 <code>stage_nonlocal=true</code> 路径</td></tr>
+<tr><td><code>Client::Upsert / BatchUpsert</code></td><td>是</td><td>外部 Put / BatchPut 提交 → 原生 Upsert / BatchUpsert → Wait；KVClient Store 支持同 key 覆盖写，不因 key 已存在报错</td><td>key(s) + slices</td><td>存在则更新，不存在则插入</td><td>upsert 系列</td></tr>
+<tr><td><code>Client::TransferWriteRange(replica, slices, dst_offset)</code></td><td>否</td><td>范围传输，在Client层无key，上层RealClient有key但语义不合适</td><td>已缓存的副本描述 + slices + 目标偏移</td><td>往已有 memory replica 的指定区间写</td><td>Put session 的分段写</td></tr>
+<tr><td><code>Client::BatchTransferWriteRanges(...)</code></td><td>否</td><td>范围传输，在Client层无key，上层RealClient有key但语义不合适</td><td>多副本 + 多 slices + 多偏移</td><td>批量区间写</td><td>Put session 批量分段写</td></tr>
+<tr><td><code>Client::StartBatchPutForSizes(keys, sizes, config)</code></td><td>否</td><td>只有对象大小，没有源 buffer</td><td>keys + 对象大小</td><td>只做批量写的分配阶段，预留副本空间</td><td>Put session start</td></tr>
+<tr><td><code>Client::BatchPutEnd(object_metas, replica_type)</code></td><td>否</td><td>只有元数据，没有源 buffer</td><td>对象元数据 + 副本类型</td><td>提交 Put session</td><td>Put session end</td></tr>
 </tbody>
 </table>
 
@@ -212,14 +207,19 @@ Mooncake 将分阶段写入能力通过 `StartBatchPutForSizes` 等接口暴露�
 
 *图 3：Client 内部编排 backend 与原生路径；提交失败继续原生写，有句柄时等待外部完成，按 key 合并两侧结果。[Excalidraw](assets/v4/03-dual-put-sequence-split.excalidraw)*
 
-**源数据就绪与 eventHandle**
+**第5步骤 storeAsync的 eventHandle处理**
 
-源数据由调用方保证就绪。AscendStore 普通路径在进入 Mooncake 前等待 NPU event，因此 KVClient StoreAsync 无需再传入 eventHandle：
+AscendStore 普通路径在进入 Mooncake 前等待 NPU event，因此 KVClient StoreAsync 无需再传入 eventHandle：
 
 1. **记录事件**：计算流通过 `torch.npu.Event().record()` 标记源数据就绪点。
 2. **等待事件**：后台发送线程执行 `current_event.synchronize()`。
 3. **提交写入**：`self.m_store.put(...) → MooncakeBackend.put → batch_put_from_multi_buffers`。
 
+
+
+**第12步 Wait 超时终止 ASU 底层任务**
+
+ASU 可配置 `maxErrorCount=1`，使首次计入断链的传输错误或任务执行超时即可触发断链，避免等待多次失败。Wait 超时后，KVClientBackend 通过断链保证底层不再访问源 buffer。
 
 
 三、结果处理与数据可见性
@@ -262,11 +262,10 @@ BatchPut 按输入顺序返回各 key 的合并结果；批量部分成功表示
 <thead>
 <tr>
 <th rowspan="2">接口</th>
-<th colspan="3">接口支持</th>
+<th colspan="2">接口支持</th>
 <th colspan="3">原接口功能</th>
 </tr>
 <tr>
-<th>ExternalStoreBackend 是否支持</th>
 <th>KVClientBackend 是否支持</th>
 <th>处理方式</th>
 <th>入参</th>
@@ -275,17 +274,14 @@ BatchPut 按输入顺序返回各 key 的合并结果；批量部分成功表示
 </tr>
 </thead>
 <tbody>
-<tr><td><code>Client::Remove(key, force)</code></td><td>是</td><td>是</td><td>外部 Remove 提交 → 原生 Remove → Wait；汇合两侧结果</td><td>key + force</td><td>删除对象及其原生副本；force 控制原生租约检查</td><td><code>RealClient::remove</code></td></tr>
-<tr><td><code>Client::BatchRemove(keys, force)</code></td><td>是</td><td>是</td><td>外部 BatchRemove 提交 → 原生批量删除 → Wait；结果按原始下标还原</td><td>keys + force</td><td>批量删除对象，逐项返回结果</td><td><code>RealClient::batchRemove</code></td></tr>
-<tr><td><code>Client::RemoveByRegex(str, force)</code></td><td>是</td><td>否</td><td>kvclient未提供正则删除的能力</td><td>正则表达式 + force</td><td>删除匹配表达式的原生对象</td><td><code>RealClient::removeByRegex</code>；按条件清理</td></tr>
-<tr><td><code>Client::RemoveAll(force)</code></td><td>是</td><td>否</td><td>kvclient全量清理能力未提供</td><td>force</td><td>删除原生对象及其副本</td><td><code>RealClient::removeAll</code>；全量清理</td></tr>
-<tr><td><code>Client::BatchReplicaClear(object_keys, client_id, segment_name)</code></td><td>否</td><td>否</td><td>仅清理指定原生副本，保留外部对象</td><td>keys + client_id + segment_name</td><td>清理指定 Client、segment 上的副本</td><td>RealClient 本地副本清理</td></tr>
-<tr><td><code>Client::EvictDiskReplica(...)</code>（两个重载）</td><td>否</td><td>否</td><td>仅通知 Master 淘汰原生磁盘副本，保留外部对象</td><td>key + replica_type；可显式指定 tenant_id</td><td>移除对应磁盘副本记录</td><td>本地磁盘副本淘汰 / 失效处理</td></tr>
-<tr><td><code>Client::EvictDiskReplicaIfCurrent(...)</code></td><td>否</td><td>否</td><td>仅在副本身份仍匹配时淘汰原生副本</td><td>key + tenant_id + replica_type + expected_replica_id</td><td>条件淘汰，防止误清理已替换的副本</td><td>读取失败后的副本核验与清理</td></tr>
-<tr><td><code>Client::BatchEvictDiskReplica(...)</code>（两个重载）</td><td>否</td><td>否</td><td>批量淘汰原生磁盘副本，保留外部对象</td><td>keys + replica_type；可显式指定 tenant_id</td><td>批量移除对应磁盘副本记录</td><td>批量磁盘淘汰 / 失效处理</td></tr>
-<tr><td><code>Client::BatchPutRevoke(keys, replica_type)</code></td><td>是</td><td>否</td><td>撤销原生未提交写入，不映射为外部 Remove</td><td>keys + replica_type</td><td>撤销 Put session 预留副本</td><td><code>RealClient::batch_put_session_revoke</code> 及失败清理</td></tr>
-<tr><td><code>Client::PollRemoveAll()</code></td><td>否</td><td>否</td><td>仅查询原生清理状态，不发起外部删除</td><td>无</td><td>向 Master 轮询清理状态</td><td>原生清理状态轮询</td></tr>
-<tr><td><code>Client::UnmountSegment / UnmountSegmentById / UnmountLocalDiskSegment</code></td><td>否</td><td>否</td><td>仅处理原生 segment 生命周期，保留外部对象</td><td>segment 地址 / ID 或本地磁盘上下文，依接口而定</td><td>卸载原生内存或磁盘 segment</td><td>segment 下线与资源回收</td></tr>
+<tr><td><code>Client::Remove(key, force)</code></td><td>是</td><td>外部 Remove 提交 → 原生 Remove → Wait；汇合两侧结果</td><td>key + force</td><td>删除对象及其原生副本；force 控制原生租约检查</td><td><code>RealClient::remove</code></td></tr>
+<tr><td><code>Client::BatchRemove(keys, force)</code></td><td>是</td><td>外部 BatchRemove 提交 → 原生批量删除 → Wait；结果按原始下标还原</td><td>keys + force</td><td>批量删除对象，逐项返回结果</td><td><code>RealClient::batchRemove</code></td></tr>
+<tr><td><code>Client::RemoveByRegex(str, force)</code></td><td>否</td><td>kvclient未提供正则删除的能力</td><td>正则表达式 + force</td><td>删除匹配表达式的原生对象</td><td><code>RealClient::removeByRegex</code>；按条件清理</td></tr>
+<tr><td><code>Client::RemoveAll(force)</code></td><td>否</td><td>kvclient全量清理能力未提供</td><td>force</td><td>删除原生对象及其副本</td><td><code>RealClient::removeAll</code>；全量清理</td></tr>
+<tr><td><code>Client::EvictDiskReplica(...)</code>（两个重载）</td><td>否</td><td>仅通知 Master 淘汰原生磁盘副本，保留外部对象</td><td>key + replica_type；可显式指定 tenant_id</td><td>移除对应磁盘副本记录</td><td>本地磁盘副本淘汰 / 失效处理</td></tr>
+<tr><td><code>Client::EvictDiskReplicaIfCurrent(...)</code></td><td>否</td><td>仅在副本身份仍匹配时淘汰原生副本</td><td>key + tenant_id + replica_type + expected_replica_id</td><td>条件淘汰，防止误清理已替换的副本</td><td>读取失败后的副本核验与清理</td></tr>
+<tr><td><code>Client::BatchEvictDiskReplica(...)</code>（两个重载）</td><td>否</td><td>批量淘汰原生磁盘副本，保留外部对象</td><td>keys + replica_type；可显式指定 tenant_id</td><td>批量移除对应磁盘副本记录</td><td>批量磁盘淘汰 / 失效处理</td></tr>
+<tr><td><code>Client::PollRemoveAll()</code></td><td>否</td><td>仅查询原生清理状态，不发起删除</td><td>无</td><td>向 Master 轮询清理状态</td><td>原生清理状态轮询</td></tr>
 </tbody>
 </table>
 
