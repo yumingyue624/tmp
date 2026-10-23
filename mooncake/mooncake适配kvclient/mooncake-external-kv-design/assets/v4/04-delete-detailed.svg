@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1720" height="1760" viewBox="0 0 1720 1760">
+<rect width="100%" height="100%" fill="white"/>
+<text x="50" y="56.0" font-family="Microsoft YaHei, sans-serif" font-size="30" text-anchor="start" fill="#243746">显式删除：两种 force 均先提交外部删除，原生侧按租约处理</text>
+<text x="50" y="100.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="start" fill="#657583">适用于 Remove / BatchRemove；原生缓存淘汰不触发外部删除。</text>
+<rect x="60" y="145" width="500" height="65" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="185.2" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">Client：编排与结果汇合</text>
+<rect x="610" y="145" width="500" height="65" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="860.0" y="185.2" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">ExternalStoreBackend / KVClient</text>
+<rect x="1160" y="145" width="500" height="65" fill="#fff6e7" stroke="#93651f" stroke-width="2"/>
+<text x="1410.0" y="185.2" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">原生路径：Master + TE</text>
+<rect x="60" y="250" width="500" height="110" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="298.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">输入 key(s)、force（默认 false）</text>
+<text x="310.0" y="327.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">同 key 前序写入先收敛</text>
+<rect x="610" y="250" width="1050" height="110" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="1135.0" y="298.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">Query / GetReplicaList 通过 GrantLease 授予短期读租约</text>
+<text x="1135.0" y="327.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">force 仅控制原生租约检查；KVClient DeleteAsync 没有 force 参数</text>
+<polyline points="310,360 310,420" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="304.99755037084947,409.09241100390136 310,420 315.00244962915053,409.09241100390136" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="60" y="420" width="500" height="110" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="468.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">先调用 backend Remove / BatchRemove</text>
+<text x="310.0" y="497.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">force=true / false 均执行</text>
+<polyline points="560,475 610,475" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="599.0924110039014,480.00244962915053 610,475 599.0924110039014,469.99755037084947" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="610" y="420" width="500" height="110" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="860.0" y="468.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">转换 key，提交 DeleteAsync</text>
+<text x="860.0" y="497.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">返回句柄；部分提交也须可追踪</text>
+<rect x="1160" y="420" width="500" height="110" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="1410.0" y="468.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">false 不跳过外部删除</text>
+<text x="1410.0" y="497.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">避免默认 Remove 残留外部缓存</text>
+<polyline points="310,530 310,590" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="304.99755037084947,579.0924110039014 310,590 315.00244962915053,579.0924110039014" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="60" y="590" width="500" height="110" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="638.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">再执行原生同步 Remove(key, force)</text>
+<text x="310.0" y="667.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">记录原生结果</text>
+<polyline points="560,645 580,645 580,570 1140,570 1140,645 1160,645" fill="none" stroke="#93651f" stroke-width="2"/>
+<polyline points="1149.0924110039014,650.0024496291505 1160,645 1149.0924110039014,639.9975503708495" fill="none" stroke="#93651f" stroke-width="2"/>
+<rect x="1160" y="590" width="500" height="110" fill="#fff6e7" stroke="#93651f" stroke-width="2"/>
+<text x="1410.0" y="638.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">Master 执行原生删除</text>
+<text x="1410.0" y="667.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">按 force 决定是否检查读租约</text>
+<rect x="610" y="590" width="500" height="110" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="860.0" y="638.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">外部删除可能已经完成</text>
+<text x="860.0" y="667.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">不能依据原生拒绝结果撤回</text>
+<polyline points="1410,700 1410,755" fill="none" stroke="#93651f" stroke-width="2"/>
+<polyline points="1404.9975503708495,744.0924110039014 1410,755 1415.0024496291505,744.0924110039014" fill="none" stroke="#93651f" stroke-width="2"/>
+<polyline points="1410,730 310,730 310,755" fill="none" stroke="#93651f" stroke-width="2"/>
+<polyline points="304.99755037084947,744.0924110039014 310,755 315.00244962915053,744.0924110039014" fill="none" stroke="#93651f" stroke-width="2"/>
+<polyline points="860,730 860,755" fill="none" stroke="#93651f" stroke-width="2"/>
+<polyline points="854.9975503708495,744.0924110039014 860,755 865.0024496291505,744.0924110039014" fill="none" stroke="#93651f" stroke-width="2"/>
+<rect x="60" y="755" width="500" height="150" fill="#fff6e7" stroke="#93651f" stroke-width="2"/>
+<text x="310.0" y="809.1" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">force=false，存在未过期租约</text>
+<text x="310.0" y="837.7" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">原生拒绝：OBJECT_HAS_LEASE</text>
+<text x="310.0" y="866.3000000000001" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">外部仍执行，可能形成部分删除</text>
+<rect x="610" y="755" width="500" height="150" fill="#fff6e7" stroke="#93651f" stroke-width="2"/>
+<text x="860.0" y="809.1" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">force=false，无有效租约</text>
+<text x="860.0" y="837.7" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">正常执行原生删除</text>
+<text x="860.0" y="866.3000000000001" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">不存在则记录明确 NotFound</text>
+<rect x="1160" y="755" width="500" height="150" fill="#fff6e7" stroke="#93651f" stroke-width="2"/>
+<text x="1410.0" y="809.1" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">force=true</text>
+<text x="1410.0" y="837.7" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">跳过租约检查，执行原生删除</text>
+<text x="1410.0" y="866.3000000000001" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">可能影响在途原生读取</text>
+<polyline points="310,905 310,965" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="304.99755037084947,954.0924110039014 310,965 315.00244962915053,954.0924110039014" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="860,905 860,935 310,935" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="1410,905 1410,935 860,935" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="60" y="965" width="500" height="115" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="1015.9" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">原生成功、拒绝、失败或异常</text>
+<text x="310.0" y="1044.5" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">均需收敛已提交的外部任务</text>
+<polyline points="560,1022 610,1022" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="599.0924110039014,1027.0024496291505 610,1022 599.0924110039014,1016.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="610" y="965" width="500" height="115" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="860.0" y="1016.2" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">有句柄则 Wait，记录逐项结果</text>
+<text x="860.0" y="1043.5" font-family="Microsoft YaHei, sans-serif" font-size="21" text-anchor="middle" fill="#28705f">无句柄且无在途任务则记录提交失败</text>
+<rect x="1160" y="965" width="500" height="115" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="1410.0" y="1015.9" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">超时保留可追踪状态</text>
+<text x="1410.0" y="1044.5" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">任务记录删除 ≠ 底层访问停止</text>
+<rect x="60" y="1140" width="1600" height="205" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="860.0" y="1190.75" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">逐 key 汇合结果</text>
+<text x="860.0" y="1220.65" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">原生已删 / 明确不存在 + 外部已删 / 明确不存在 → 幂等成功</text>
+<text x="860.0" y="1250.55" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">原生因租约 / 权限拒绝 → 返回原生错误；外部已删则记录部分删除</text>
+<text x="860.0" y="1280.45" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">原生成功但外部失败 / 未确认 → 返回删除失败 / 部分失败</text>
+<text x="860.0" y="1310.35" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">原生超时或结果不确定 → 保留逐侧状态，不报告完整成功</text>
+<rect x="60" y="1410" width="1600" height="150" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="860.0" y="1449.8" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">读删与重试边界</text>
+<text x="860.0" y="1478.3999999999999" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">外部读删并发安全由存储端保证；force=true 不允许回收仍被访问的资源</text>
+<text x="860.0" y="1507.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">原生拒绝不代表两侧均未删除；重试须防止迟到删除误删重建对象</text>
+<text x="860.0" y="1535.6" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">对象代际 / 幂等保护未落实前，不对结果未知的删除进行盲重试</text>
+<text x="860.0" y="1653.0" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#243746">观测要求：记录原生 / 外部状态、部分删除和未确认任务；批量结果保持原始下标。</text>
+</svg>

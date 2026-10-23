@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1720" height="1700" viewBox="0 0 1720 1700">
+<rect width="100%" height="100%" fill="white"/>
+<text x="50" y="56.0" font-family="Microsoft YaHei, sans-serif" font-size="30" text-anchor="start" fill="#243746">双写：外部先提交，原生同步执行，返回前收敛两路访问</text>
+<text x="50" y="100.0" font-family="Microsoft YaHei, sans-serif" font-size="20" text-anchor="start" fill="#657583">适用于 Put / BatchPut；批量结果按原始 key 下标汇合，单对象独立实现。</text>
+<rect x="60" y="145" width="500" height="65" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="185.2" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">Client：编排与结果汇合</text>
+<rect x="610" y="145" width="500" height="65" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="860.0" y="185.2" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">ExternalStoreBackend / KVClient</text>
+<rect x="1160" y="145" width="500" height="65" fill="#fff6e7" stroke="#93651f" stroke-width="2"/>
+<text x="1410.0" y="185.2" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">原生路径：Master + TE</text>
+<rect x="60" y="250" width="500" height="110" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="298.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">入口校验与同 key 排序</text>
+<text x="310.0" y="327.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">前序操作收敛后再开始本次双写</text>
+<rect x="610" y="250" width="1050" height="110" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="1135.0" y="298.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">源数据已就绪且保持不变；相关内存已提前注册</text>
+<text x="1135.0" y="327.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">RealClient 完成 IPC 导入和地址转换；本次 Put 不临时注册、不复制 payload</text>
+<polyline points="310,360 310,420" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="304.99755037084947,409.09241100390136 310,420 315.00244962915053,409.09241100390136" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="60" y="420" width="500" height="110" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="468.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">调用 backend Put / BatchPut</text>
+<text x="310.0" y="497.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">传入完整 key 与每个对象的 slices</text>
+<polyline points="560,475 610,475" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="599.0924110039014,480.00244962915053 610,475 599.0924110039014,469.99755037084947" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="610" y="420" width="500" height="110" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="860.0" y="468.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">查注册句柄，转换 SDK 请求</text>
+<text x="860.0" y="497.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">异步提交，返回 OperationHandle</text>
+<rect x="1160" y="420" width="500" height="110" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="1410.0" y="468.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">提交失败不覆盖原生结果</text>
+<text x="1410.0" y="497.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">部分已派发：必须保留可追踪句柄</text>
+<polyline points="310,530 310,590" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="304.99755037084947,579.0924110039014 310,590 315.00244962915053,579.0924110039014" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="60" y="590" width="500" height="110" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="638.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">执行原生同步 Put / BatchPut</text>
+<text x="310.0" y="667.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">两个 BatchPut 重载只编排一次</text>
+<polyline points="560,645 580,645 580,570 1140,570 1140,645 1160,645" fill="none" stroke="#93651f" stroke-width="2"/>
+<polyline points="1149.0924110039014,650.0024496291505 1160,645 1149.0924110039014,639.9975503708495" fill="none" stroke="#93651f" stroke-width="2"/>
+<rect x="1160" y="590" width="500" height="110" fill="#fff6e7" stroke="#93651f" stroke-width="2"/>
+<text x="1410.0" y="638.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">PutStart 分配 → TE 传输</text>
+<text x="1410.0" y="667.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#93651f">→ PutEnd 提交；记录逐项结果</text>
+<rect x="610" y="590" width="500" height="110" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="860.0" y="638.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">外部传输与原生路径重叠</text>
+<text x="860.0" y="667.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">两路使用调用方源 buffer</text>
+<polyline points="310,700 310,760" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="304.99755037084947,749.0924110039014 310,760 315.00244962915053,749.0924110039014" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="60" y="760" width="500" height="110" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="808.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">无论原生成败，收敛外部任务</text>
+<text x="310.0" y="837.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">原生异常也不能绕过清理</text>
+<polyline points="560,815 610,815" fill="none" stroke="#28705f" stroke-width="2"/>
+<polyline points="599.0924110039014,820.0024496291505 610,815 599.0924110039014,809.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
+<rect x="610" y="760" width="500" height="110" fill="#edf7f2" stroke="#28705f" stroke-width="2"/>
+<text x="860.0" y="808.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">对已获得的句柄执行 Wait</text>
+<text x="860.0" y="837.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#28705f">逐项记录外部完成结果</text>
+<rect x="1160" y="760" width="500" height="110" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="1410.0" y="808.4" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">未获得句柄且无在途任务</text>
+<text x="1410.0" y="837.0" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">记录外部提交失败，无需 Wait</text>
+<polyline points="310,870 310,930" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="304.99755037084947,919.0924110039014 310,930 315.00244962915053,919.0924110039014" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="60" y="930" width="500" height="140" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="310.0" y="979.1" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">返回门槛：两路停止访问源</text>
+<text x="310.0" y="1007.7" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">超时 ≠ 停止传输</text>
+<text x="310.0" y="1036.3000000000002" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#315b8a">失败 / 超时仍需取得停止依据</text>
+<rect x="610" y="930" width="1050" height="140" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="1135.0" y="979.1" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">Wait 超时不能只移除任务后返回；MR 引用也不能阻止调用方复用 payload</text>
+<text x="1135.0" y="1007.7" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">ASU 达 maxErrorCount 触发断链，仍须确认清理后无在途访问</text>
+<text x="1135.0" y="1036.3000000000002" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">停止访问保证及有界返回须按设备 / 协议验证</text>
+<polyline points="310,1070 310,1140" fill="none" stroke="#315b8a" stroke-width="2"/>
+<polyline points="304.99755037084947,1129.0924110039014 310,1140 315.00244962915053,1129.0924110039014" fill="none" stroke="#315b8a" stroke-width="2"/>
+<rect x="60" y="1140" width="1600" height="155" fill="#edf3fa" stroke="#315b8a" stroke-width="2"/>
+<text x="860.0" y="1195.65" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">结果汇合：返回原生逐项结果，外部结果用于诊断 / 降级</text>
+<text x="860.0" y="1225.5500000000002" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">原生成、外部败：返回原生成功；原生败、外部成：返回原生失败，保留外部对象</text>
+<text x="860.0" y="1255.45" font-family="Microsoft YaHei, sans-serif" font-size="23" text-anchor="middle" fill="#315b8a">外部失败不自动回滚删除；筛选、重排后仍按原始 key 下标还原结果</text>
+<rect x="60" y="1360" width="1600" height="130" fill="#f5f7f9" stroke="#657583" stroke-width="2"/>
+<text x="860.0" y="1404.1" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">布局与设备边界</text>
+<text x="860.0" y="1432.6999999999998" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">多 slices 按序构成同一对象，检查总长度、协议对齐与请求上限；不越界补齐</text>
+<text x="860.0" y="1461.3" font-family="Microsoft YaHei, sans-serif" font-size="22" text-anchor="middle" fill="#657583">设备组合不允许并发访问时需串行或禁用；原生 staging 不等于外部可用注册源</text>
+<text x="860.0" y="1584.0" font-family="Microsoft YaHei, sans-serif" font-size="24" text-anchor="middle" fill="#243746">安全约束：只有确认两路均不再访问源，调用方才能修改、复用或释放 buffer。</text>
+</svg>

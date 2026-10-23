@@ -11,9 +11,9 @@ Mooncake 原生内存副本淘汰后，外部缓存仍可保留 KVCache，降低
 | 需求 | 设计约束 |
 | --- | --- |
 | 双写内存与外部存储 | 外部先提交，原生同步 Put，最后 Wait 外部结果 |
-| 保留原生 Put 语义 | 外部失败不覆盖原生 Put 结果；返回前两路均停止访问源 |
+| 按 key 汇合写入结果 | 至少一端成功即返回该 key 成功；返回前两路均停止访问源 |
 | 外部独立保留缓存 | 不向 Master 逐项登记外部对象；原生淘汰不删除外部 |
-| 显式删除覆盖两端 | Master 明确不存在仍删除外部；条件拒绝不能绕过 |
+| 显式删除覆盖两端 | 外部先提交，再执行原生删除；逐侧记录结果，部分删除不报完整成功 |
 | 后续接入其他 backend | 公共接口不暴露 SDK TaskId、MRHandle 或设备协议 |
 | 设备内存直通 | 预注册并复用；不新增 payload gather/staging，不越界访问 |
 
@@ -28,7 +28,7 @@ Mooncake 原生内存副本淘汰后，外部缓存仍可保留 KVCache，降低
 | KVClientBackend | key/slices 转换、注册表查找、SDK 任务封装 |
 | 完整 KVClient SDK | DHT、节点分组、协议、连接、注册与完成汇总 |
 
-同 key 内容不可变。本模块定义写入、删除与注册接口；查询和读取接口由读侧模块负责，相关协作约束见第 4、5 节。
+普通 Put 保留原生语义，同 key 内容更新通过 Upsert 完成。本模块定义写入、删除与注册接口；查询和读取接口由读侧模块负责，相关协作约束见第 4、5 节。
 
 ## 2. ExternalStoreBackend 接口设计
 
@@ -169,66 +169,175 @@ KVBuffer {
 
 一、接口支持情况
 
-| 接口 | 是否接入 backend | 处理方式 | 入参 | 行为 | 使用场景 / 调用者 |
-| --- | --- | --- | --- | --- | --- |
-| `Client::Put(key, slices, config)` | 是 | 外部 Put 提交 → 原生 Put → Wait 外部结果 | key + `std::vector<Slice>` | PutStart 分配副本，传输，PutEnd 提交 | `RealClient::put`、`put_from`、`put_parts` 等最终走这里 |
-| `Client::BatchPut(keys, batched_slices, config)` | 是 | 委托带 stager 的重载，由共同实现完成双写，避免重复提交 | 多 key + 每个 key 的 slices | 批量分配、传输、提交 | `RealClient::put_batch`、`batch_put_from`、`batch_put_from_multi_buffers` |
-| `Client::BatchPut(keys, batched_slices, config, WriteBufferStager)` | 是 | 外部 BatchPut 提交 → 原生批量写 → Wait；外部源须可访问且已注册，不能直接假定原生 staging buffer 可用 | 同上 + stager | 非本地 buffer 可先 staged 到内部 buffer | 源 buffer 不能被 TransferEngine 直接 DMA；RealClient 的 `stage_nonlocal=true` 路径 |
-| `Client::Upsert / BatchUpsert` | 暂定 | 待确认 ASU 覆盖语义，若store支持覆盖则支持 | key(s) + slices | 存在则更新，不存在则插入 | upsert 系列 |
-| `Client::TransferWriteRange(replica, slices, dst_offset)` | 否 | 范围传输，在Client层无key，上层RealClient有key但语义不合适 | 已缓存的副本描述 + slices + 目标偏移 | 往已有 memory replica 的指定区间写 | Put session 的分段写 |
-| `Client::BatchTransferWriteRanges(...)` | 否 | 范围传输，在Client层无key，上层RealClient有key但语义不合适 | 多副本 + 多 slices + 多偏移 | 批量区间写 | Put session 批量分段写 |
-| `Client::StartBatchPutForSizes(keys, sizes, config)` | 否 | 只有对象大小，没有源 buffer | keys + 对象大小 | 只做批量写的分配阶段，预留副本空间 | Put session start |
-| `Client::BatchPutEnd(object_metas, replica_type)` | 否 | 只有元数据，没有源 buffer | 对象元数据 + 副本类型 | 提交 Put session | Put session end |
-| `Client::BatchPutRevoke(keys, replica_type)` | 否 | 原生预留副本的撤销；外部 session 撤销语义待定义 | keys + 副本类型 | 撤销 Put session | Put session revoke |
+ExternalStoreBackend 列表示公共抽象能否承载该语义，包含需扩展的能力，不代表第 2 节已提供全部方法；KVClientBackend 列按当前已确认的适配能力标注，未确认能力记为“否”，原因见处理方式。
+
+<table>
+<thead>
+<tr>
+<th rowspan="2">接口</th>
+<th colspan="3">接口支持</th>
+<th colspan="3">原接口功能</th>
+</tr>
+<tr>
+<th>ExternalStoreBackend 是否支持</th>
+<th>KVClientBackend 是否支持</th>
+<th>处理方式</th>
+<th>入参</th>
+<th>行为</th>
+<th>使用场景 / 调用者</th>
+</tr>
+</thead>
+<tbody>
+<tr><td><code>Client::Put(key, slices, config)</code></td><td>是</td><td>是</td><td>外部 Put 提交 → 原生 Put → Wait 外部结果</td><td>key + <code>std::vector&lt;Slice&gt;</code></td><td>PutStart 分配副本，传输，PutEnd 提交</td><td><code>RealClient::put</code>、<code>put_from</code>、<code>put_parts</code> 等最终走这里</td></tr>
+<tr><td><code>Client::BatchPut(keys, batched_slices, config)</code></td><td>是</td><td>是</td><td>委托带 stager 的重载，由共同实现完成双写，避免重复提交</td><td>多 key + 每个 key 的 slices</td><td>批量分配、传输、提交</td><td><code>RealClient::put_batch</code>、<code>batch_put_from</code>、<code>batch_put_from_multi_buffers</code></td></tr>
+<tr><td><code>Client::BatchPut(keys, batched_slices, config, WriteBufferStager)</code></td><td>是</td><td>是</td><td>外部 BatchPut 提交 → 原生批量写 → Wait；外部源须可访问且已注册，不能直接假定原生 staging buffer 可用</td><td>同上 + stager</td><td>非本地 buffer 可先 staged 到内部 buffer</td><td>源 buffer 不能被 TransferEngine 直接 DMA；RealClient 的 <code>stage_nonlocal=true</code> 路径</td></tr>
+<tr><td><code>Client::Upsert / BatchUpsert</code></td><td>是</td><td>是</td><td>外部 Put / BatchPut 提交 → 原生 Upsert / BatchUpsert → Wait；KVClient Store 支持同 key 覆盖写，不因 key 已存在报错</td><td>key(s) + slices</td><td>存在则更新，不存在则插入</td><td>upsert 系列</td></tr>
+<tr><td><code>Client::TransferWriteRange(replica, slices, dst_offset)</code></td><td>是</td><td>否</td><td>范围传输，在Client层无key，上层RealClient有key但语义不合适</td><td>已缓存的副本描述 + slices + 目标偏移</td><td>往已有 memory replica 的指定区间写</td><td>Put session 的分段写</td></tr>
+<tr><td><code>Client::BatchTransferWriteRanges(...)</code></td><td>是</td><td>否</td><td>范围传输，在Client层无key，上层RealClient有key但语义不合适</td><td>多副本 + 多 slices + 多偏移</td><td>批量区间写</td><td>Put session 批量分段写</td></tr>
+<tr><td><code>Client::StartBatchPutForSizes(keys, sizes, config)</code></td><td>是</td><td>否</td><td>只有对象大小，没有源 buffer</td><td>keys + 对象大小</td><td>只做批量写的分配阶段，预留副本空间</td><td>Put session start</td></tr>
+<tr><td><code>Client::BatchPutEnd(object_metas, replica_type)</code></td><td>是</td><td>否</td><td>只有元数据，没有源 buffer</td><td>对象元数据 + 副本类型</td><td>提交 Put session</td><td>Put session end</td></tr>
+<tr><td><code>Client::BatchPutRevoke(keys, replica_type)</code></td><td>是</td><td>否</td><td>原生预留副本的撤销；外部 session 撤销语义待定义</td><td>keys + 副本类型</td><td>撤销 Put session</td><td>Put session revoke</td></tr>
+</tbody>
+</table>
 
 Mooncake 将分阶段写入能力通过 `StartBatchPutForSizes` 等接口暴露给上层，由推理引擎编排各阶段调用，Mooncake 内部未调用这几个接口完成整个写入流程。
 
 多 slices 的整对象 Put 一次提交完整对象；Put session 则跨多次调用写入区间。范围写接口不携带对象 key 和完整提交状态，不能直接映射为外部 Store。
 
 二、双写实现
-![图 3：双写时序](assets/03-dual-put.png)
 
-*图 3：先外部 BatchPut，再原生 BatchPut，最后 Wait。[Excalidraw](assets/03-dual-put.excalidraw)*
+**执行时序**
 
-```cpp
-auto external = backend->BatchPut(keys, batched_slices);
-auto native_results = client->BatchPut(keys, batched_slices, config);
-if (external) {
-    auto external_results = external.value()->Wait();
-}
-return native_results;
-```
-* 调用KvClient::StoreAsync时无需传入eventHandle：
-由于AscendStoreConnector 在调用 Store 前先会等待 NPU event。 因此 Store 参数没有 eventHandle，也能在这条调用链中拿到已就绪的数据。
-    1. 记录 event：在 save_kv_layer / wait_for_save 里对当前计算流 torch.npu.Event().record()（layerwise 时每层 record 一次）。
-    2. 处理线程里等待：event 随请求传给后台发送线程，线程在调用 Mooncake 前执行 current_event.synchronize()
-    3. 等待event结束后再 put：self.m_store.put(...) → MooncakeBackend.put → batch_put_from_multi_buffers。
+![图 3：双写时序与错误分支](assets/v4/03-dual-put-sequence-split.png)
 
-异常路径与正常路径共用任务收敛逻辑：原生 Put 失败或抛异常，仍需等待已启动的外部任务结束访问。源就绪由调用方保证；AscendStore 普通路径在发送线程等待 NPU event 后调用 Store，layerwise 的事件依赖尚需验证。
+*图 3：Client 内部编排 backend 与原生路径；提交失败继续原生写，有句柄时等待外部完成，按 key 合并两侧结果。[Excalidraw](assets/v4/03-dual-put-sequence-split.excalidraw)*
 
-| 原生结果 | 外部结果 | Put 返回值 |
+**源数据就绪与 eventHandle**
+
+源数据由调用方保证就绪。AscendStore 普通路径在进入 Mooncake 前等待 NPU event，因此 KVClient StoreAsync 无需再传入 eventHandle：
+
+1. **记录事件**：计算流通过 `torch.npu.Event().record()` 标记源数据就绪点。
+2. **等待事件**：后台发送线程执行 `current_event.synchronize()`。
+3. **提交写入**：`self.m_store.put(...) → MooncakeBackend.put → batch_put_from_multi_buffers`。
+
+layerwise 路径逐层记录事件，其事件依赖仍需单独验证。
+
+**任务收敛与返回条件**
+
+原生 Put 失败或抛异常，仍需等待已提交的外部任务结束访问。返回前两路均须停止访问源 buffer；具体超时与停止访问约束见第 5 节。
+
+同步 backend 可在提交时完成；异步 backend 与原生路径重叠。不允许同时访问源的设备组合必须串行或拒绝，不能仅凭“源不修改”推断并发合法。
+
+三、结果处理与数据可见性
+
+**原生副本模式与成功要求**
+
+Mooncake 按 key 判断原生写入结果；副本模式仅约束原生路径，不包含 KVClient 外存。
+
+| ReplicaWriteMode | 典型配置 | 原生成功要求 | 失败侧处理 |
+| --- | --- | --- | --- |
+| SINGLE_REPLICA | 1 份 memory，其他副本数为 0 | 分配满足要求，已分配副本传输成功 | 失败时 PutRevoke(ALL) |
+| RELIABLE_MULTI_REPLICA | N 份 memory（N > 1）；NoF 多副本或配置 DFS 也属于此模式 | 分配满足要求，所有已分配副本传输成功 | 任一失败则 PutRevoke(ALL)，原生返回失败 |
+| FLEXIBLE_DUAL_REPLICA | 1 份 memory + 1 份 NoF，DFS 为 0 | 至少一类副本完整写入成功 | PutEnd 成功侧，PutRevoke 失败侧；两侧失败则撤销全部 |
+
+成功还要求相应 PutEnd / PutRevoke 调用成功。原生 PutRevoke 只作用于 Master 管理的副本，不删除 KVClient 对象。
+
+**双写结果汇合策略**
+
+1. **原生结果**：沿用上述模式判断，完成原生提交或撤销。
+2. **外部结果**：KVClientBackend 通过 Wait 获取逐 key 结果。
+3. **最终结果**：同一 key 至少一端成功即返回成功；两端均未确认成功则返回失败，记录两侧状态。原生失败、外部成功时保留外部对象，不自动回滚删除。
+
+BatchPut 按输入顺序返回各 key 的合并结果；批量部分成功表示不同 key 的结果不同。本方案每个 key 一次提交，不定义单个 key 的部分成功状态。无论合并结果如何，返回前两路均须停止访问源 buffer。
+
+**ASU 数据可见性（按 Store 状态）**
+
+| 外部对象状态 | Load 结果 | 处理规则 |
 | --- | --- | --- |
-| 成功 | 成功 | 原生成功 |
-| 成功 | 失败 / 未确认，但访问已停止 | 原生成功，记录外部降级 |
-| 失败 | 成功 | 原生失败，保留外部缓存，不自动回滚删除 |
-| 失败 | 失败 / 未确认，但访问已停止 | 原生失败，保留逐侧诊断 |
+| 未 Store，存储端不存在该对象 | 不存在错误 | 视为外部 miss；结合原生结果判断是否返回 NotFound |
+| Store 已提交，尚未完成 | 未写先读错误 | 视为未就绪，不当作不存在；可换源，或在读取预算内等待后重试 |
+| Store 已完整成功 | 可正常读取 | 以 Load 实际完成结果判断读取是否成功 |
 
-**返回前提：两路停止访问源。** 同步 backend 可在提交时完成；异步 backend 与原生路径重叠。不允许同时访问源的设备组合必须串行或拒绝，不能仅凭“源不修改”推断并发合法。外部失败不改变成功结果，但可能增加同步等待时间。
+对象状态以存储端为准，不以当前 Client 是否执行过 Store 判断。上述为 Load 行为，Query 对未完成写入的返回语义仍需确认。
+
+因此，未完成的 Store 不会被 Load 当作完整对象成功读取；仅在 Store 完整成功且 Load 成功完成后，调用方才能消费目标 KVBuffer，保证读取到完整数据。
 
 ### 3.2 删除
 
-![图 4：删除分支](assets/v4/04-delete.png)
+一、接口支持情况
 
-*图 4：先执行原生条件检查，再决定外部删除。[Excalidraw](assets/v4/04-delete.excalidraw)*
+<table>
+<thead>
+<tr>
+<th rowspan="2">接口</th>
+<th colspan="3">接口支持</th>
+<th colspan="3">原接口功能</th>
+</tr>
+<tr>
+<th>ExternalStoreBackend 是否支持</th>
+<th>KVClientBackend 是否支持</th>
+<th>处理方式</th>
+<th>入参</th>
+<th>行为</th>
+<th>使用场景 / 调用者</th>
+</tr>
+</thead>
+<tbody>
+<tr><td><code>Client::Remove(key, force)</code></td><td>是</td><td>是</td><td>外部 Remove 提交 → 原生 Remove → Wait；汇合两侧结果</td><td>key + force</td><td>删除对象及其原生副本；force 控制原生租约检查</td><td><code>RealClient::remove</code></td></tr>
+<tr><td><code>Client::BatchRemove(keys, force)</code></td><td>是</td><td>是</td><td>外部 BatchRemove 提交 → 原生批量删除 → Wait；结果按原始下标还原</td><td>keys + force</td><td>批量删除对象，逐项返回结果</td><td><code>RealClient::batchRemove</code></td></tr>
+<tr><td><code>Client::RemoveByRegex(str, force)</code></td><td>是</td><td>否</td><td>kvclient未提供正则删除的能力</td><td>正则表达式 + force</td><td>删除匹配表达式的原生对象</td><td><code>RealClient::removeByRegex</code>；按条件清理</td></tr>
+<tr><td><code>Client::RemoveAll(force)</code></td><td>是</td><td>否</td><td>kvclient全量清理能力未提供</td><td>force</td><td>删除原生对象及其副本</td><td><code>RealClient::removeAll</code>；全量清理</td></tr>
+<tr><td><code>Client::BatchReplicaClear(object_keys, client_id, segment_name)</code></td><td>否</td><td>否</td><td>仅清理指定原生副本，保留外部对象</td><td>keys + client_id + segment_name</td><td>清理指定 Client、segment 上的副本</td><td>RealClient 本地副本清理</td></tr>
+<tr><td><code>Client::EvictDiskReplica(...)</code>（两个重载）</td><td>否</td><td>否</td><td>仅通知 Master 淘汰原生磁盘副本，保留外部对象</td><td>key + replica_type；可显式指定 tenant_id</td><td>移除对应磁盘副本记录</td><td>本地磁盘副本淘汰 / 失效处理</td></tr>
+<tr><td><code>Client::EvictDiskReplicaIfCurrent(...)</code></td><td>否</td><td>否</td><td>仅在副本身份仍匹配时淘汰原生副本</td><td>key + tenant_id + replica_type + expected_replica_id</td><td>条件淘汰，防止误清理已替换的副本</td><td>读取失败后的副本核验与清理</td></tr>
+<tr><td><code>Client::BatchEvictDiskReplica(...)</code>（两个重载）</td><td>否</td><td>否</td><td>批量淘汰原生磁盘副本，保留外部对象</td><td>keys + replica_type；可显式指定 tenant_id</td><td>批量移除对应磁盘副本记录</td><td>批量磁盘淘汰 / 失效处理</td></tr>
+<tr><td><code>Client::BatchPutRevoke(keys, replica_type)</code></td><td>是</td><td>否</td><td>撤销原生未提交写入，不映射为外部 Remove</td><td>keys + replica_type</td><td>撤销 Put session 预留副本</td><td><code>RealClient::batch_put_session_revoke</code> 及失败清理</td></tr>
+<tr><td><code>Client::PollRemoveAll()</code></td><td>否</td><td>否</td><td>仅查询原生清理状态，不发起外部删除</td><td>无</td><td>向 Master 轮询清理状态</td><td>原生清理状态轮询</td></tr>
+<tr><td><code>Client::UnmountSegment / UnmountSegmentById / UnmountLocalDiskSegment</code></td><td>否</td><td>否</td><td>仅处理原生 segment 生命周期，保留外部对象</td><td>segment 地址 / ID 或本地磁盘上下文，依接口而定</td><td>卸载原生内存或磁盘 segment</td><td>segment 下线与资源回收</td></tr>
+</tbody>
+</table>
 
-| 原生 Remove 结果 | 外部处理 | 返回规则 |
+二、删除实现
+
+**执行时序**
+
+![图 4：双删时序与 force 分支](assets/v4/04-delete-sequence-split.png)
+
+*图 4：force 两种取值均提交外部删除；原生侧按租约分支处理，最后 Wait 并汇合逐侧结果。[Excalidraw](assets/v4/04-delete-sequence-split.excalidraw)*
+
+```text
+提交外部 Remove → 执行原生 Remove(key, force) → Wait 外部结果 → 汇总两侧结果
+```
+
+同 key 前序写先收敛，再提交外部删除；原生删除完成后，等待已提交的外部任务并汇合结果。原生缓存淘汰不透传 Remove。
+
+**force 与读租约**
+
+Query 获取副本信息时，Master 通过 `GrantLease` 授予短期读租约（`lease_timeout`）。`force` 仅控制原生路径的租约检查。
+
+| force | 原生删除行为 | 外部删除行为 |
 | --- | --- | --- |
-| 已删 / 明确 NotFound | 执行 Remove 并 Wait | 外部已删/不存在则幂等成功 |
-| 租约、权限等明确拒绝 | 不删外部 | 返回原生错误 |
-| 超时 / 结果不确定 | 先确认原生结果，不盲删外部 | 返回结果不确定，保留可追踪状态 |
-| 已删但外部失败 | 保留待处理状态 | 返回删除失败/部分失败，不报完整成功 |
+| false（默认） | 租约未过期则拒绝，返回 `OBJECT_HAS_LEASE` | 提交删除并 Wait |
+| true | 跳过租约检查，可能影响在途读取 | 提交删除并 Wait |
 
-同 key 前序写先收敛，删除再执行。原生淘汰不透传 Remove。重试必须避免迟到删除作用于新对象；在对象代际/幂等契约确定前，不提供跨重建的盲重试。
+三、结果处理与安全约束
+
+**两侧结果汇合**
+
+删除结果按 key 判断，批量结果保持输入顺序。
+
+| 原生结果 | 外部结果 | 返回规则 |
+| --- | --- | --- |
+| 已删 / 明确 NotFound | 已删 / 明确不存在 | 幂等成功 |
+| 租约、权限等明确拒绝 | 任意 | 返回原生错误；外部已删时记录部分删除 |
+| 超时 / 结果不确定 | 任意 | 返回原生错误或结果不确定，保留逐侧状态 |
+| 已删 / 明确 NotFound | 失败 / 结果不确定 | 返回删除失败/部分失败，不报完整成功 |
+
+**在途访问与重试**
+
+外部读删并发的内存访问安全由存储端保证；`force=true` 不代表允许回收仍被在途操作访问的资源。超时与退出时的任务收敛要求见第 5 节。
+
+重试必须避免迟到删除作用于新对象；在对象代际/幂等契约确定前，不提供跨重建的盲重试。
 
 ## 4. Client 不支持/仅原生接口清单
 
@@ -239,11 +348,11 @@ return native_results;
 | get_into_ranges、batch_get_into_multi_buffer_ranges | 待读侧扩展，当前外部返回不支持 | 需精确范围、目标偏移、对齐和边界验证 |
 | 原生 QueryResult snapshot、get session | 仅原生 | 不伪造外部副本/租约，不暗中重查快照 |
 | put session、分段写、BatchTransferWriteRanges | 外部模式预先拒绝 | 与整对象 Put 语义不同，不能静默只写一侧 |
-| Upsert 及批量/多 buffer 变体 | 外部模式预先拒绝 | 与同 key 内容不可变冲突 |
+| Upsert 及批量/多 buffer 变体 | 接入外部双写 | 外部使用 Store 覆盖写，原生保留 Upsert 语义；多 buffer 按对象完整性要求处理 |
 | RemoveAll / RemoveByRegex | 外部模式预先拒绝 | 必须覆盖外部对象；只遍历 Master 会漏删外部独存对象 |
 | replica descriptor、copy/move、replica clear、segment 操作 | 保持原生语义 | 外部不受 Master 物理副本控制 |
 
-基础 Put/Remove 及批量方法走第 2、3 节流程。多 buffer、metadata 写入需保序并验证 backend 能力；不支持布局的普通 Put 外部项可失败而保留原生结果。查询、读取及其扩展入口由读侧模块落实。Upsert、会话写、全量删除等改变完整语义的调用，必须在副作用前拒绝或使用明确命名的 native-only 管理入口。
+基础 Put/Upsert/Remove 及批量方法走第 2、3 节流程。多 buffer、metadata 写入需保序并验证 backend 能力；不支持布局的普通 Put 外部项可失败而保留原生结果。查询、读取及其扩展入口由读侧模块落实。尚未接入外部的会话写、全量删除等调用，必须在副作用前拒绝或使用明确命名的 native-only 管理入口。
 
 ## 5. 异常分析
 
@@ -258,7 +367,7 @@ E01—E10 标识各类异常及其验证用例。标为**阻塞项**的能力或
 | E05 设备内存 | Real 导入后注册；按设备/context 区分；逐组合启用 | GPU/NPU × UB/RoCE × 直接/IPC，覆盖多卡及注销；未验证组合禁用；T05 |
 | E06 查询与读取异常 | 默认原生优先；明确 miss 才查外部，原生 error 单独返回；并行模式已有 Hit 可用；两端明确 miss 才 NotFound | Error/NotReady/Pending 分开；安全停止前不切换目标写来源；T06 |
 | E07 读取策略 | 建议默认 native-first；自定义策略配并行查询；缺位置/网络字段标 Unknown，策略异常回退默认 | content_tag/长度冲突报错；目标重叠预检查拒绝；策略元数据封装待对齐；T07 |
-| E08 删除部分失败 | 按 3.3 分支；Master 缺记录仍删外部，原生条件拒绝不删外部；逐项记录完成阶段 | 部分失败/重建时的幂等及代际保护为阻塞项；T08 |
+| E08 删除部分失败 | 按 3.2 执行外部先提交的双删；force 仅影响原生租约检查；逐项记录两侧结果 | 原生拒绝而外部已删时返回原生错误；部分失败/重建时的幂等及代际保护为阻塞项；T08 |
 | E09 SDK 初始化失败 | 建议默认启动失败；仅显式配置允许 native-only，向调用方/运维暴露原因与 effective_mode | 运行中外部失联不静默变 miss；区域注册失败不能标为外部就绪；T09 |
 | E10 超时与退出 | 结果超时与访问停止分开；ASU 达到 maxErrorCount 后触发断链；退出先收敛任务再注销、关映射 | 单次超时未必达到断链阈值；断链完成与停止访问的保证须验证，见 5.2；T10 |
 
@@ -327,7 +436,7 @@ P0 表示错误数据、越界或提前释放风险；P1 表示一致性/可用�
 | T05 | 设备×协议×IPC 矩阵，多卡同地址、地址复用、注册回滚、在途撤销 | 正确 MR/context；注册次数不随 Put 次数增长；映射不提前关闭 |
 | T06 | Hit+Error、Miss+Error、Pending/NotReady；部分读失败再换源 | 错误不变 miss；前源先停；返回成功时目标完整有效 |
 | T07 | 缺失位置/tag、策略异常、非法候选、重叠目标 | 按约定回退/报错；重叠批次零派发；内容冲突不被掩盖 |
-| T08 | 原生租约拒绝、Master NotFound、外部删除失败、删除后重建再重试 | 拒绝时外部调用数为 0；缺失仍删外部；不误删新对象 |
+| T08 | force 两种取值、原生租约拒绝、Master NotFound、外部删除失败、删除后重建再重试 | 两种 force 均先提交外部删除；原生拒绝时返回原生错误并记录部分删除；缺失仍删外部；不误删新对象 |
 | T09 | SDK/目录/注册初始化故障；运行中外部失联 | 启动/降级显式可见；无外部假就绪或假 miss |
 | T10 | Wait 超时、迟到完成；ASU 未达/达到 maxErrorCount、各错误计数分支；断链清理；Dummy/Real 退出与崩溃 | 计数与 5.2 一致；未达阈值不提前释放；达到阈值触发断链，确认无在途访问后才回收；退出预算与安全释放均有证据 |
 
