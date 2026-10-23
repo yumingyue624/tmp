@@ -220,13 +220,7 @@ Mooncake 将分阶段写入能力通过 `StartBatchPutForSizes` 等接口暴露�
 2. **等待事件**：后台发送线程执行 `current_event.synchronize()`。
 3. **提交写入**：`self.m_store.put(...) → MooncakeBackend.put → batch_put_from_multi_buffers`。
 
-layerwise 路径逐层记录事件，其事件依赖仍需单独验证。
 
-**任务收敛与返回条件**
-
-原生 Put 失败或抛异常，仍需等待已提交的外部任务结束访问。返回前两路均须停止访问源 buffer；具体超时与停止访问约束见第 5 节。
-
-同步 backend 可在提交时完成；异步 backend 与原生路径重叠。不允许同时访问源的设备组合必须串行或拒绝，不能仅凭“源不修改”推断并发合法。
 
 三、结果处理与数据可见性
 
@@ -257,8 +251,6 @@ BatchPut 按输入顺序返回各 key 的合并结果；批量部分成功表示
 | 未 Store，存储端不存在该对象 | 不存在错误 | 视为外部 miss；结合原生结果判断是否返回 NotFound |
 | Store 已提交，尚未完成 | 未写先读错误 | 视为未就绪，不当作不存在；可换源，或在读取预算内等待后重试 |
 | Store 已完整成功 | 可正常读取 | 以 Load 实际完成结果判断读取是否成功 |
-
-对象状态以存储端为准，不以当前 Client 是否执行过 Store 判断。上述为 Load 行为，Query 对未完成写入的返回语义仍需确认。
 
 因此，未完成的 Store 不会被 Load 当作完整对象成功读取；仅在 Store 完整成功且 Load 成功完成后，调用方才能消费目标 KVBuffer，保证读取到完整数据。
 
