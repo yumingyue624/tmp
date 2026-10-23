@@ -1,6 +1,6 @@
 # mooncake接入kvclient put及remove模块设计
 
-**版本：v4｜日期：2026-10-22｜状态：模块设计评审**
+**日期：2026-10-22｜状态：模块设计评审**
 
 ExternalStoreBackend 为 Mooncake 提供外部对象存储访问能力，KVClientBackend 封装完整 KVClient SDK。模块负责内存注册、双写编排和显式删除。接口声明见 [external_storage_backend_v3.h](external_storage_backend_v3.h)。
 
@@ -242,8 +242,6 @@ Mooncake 按 key 判断原生写入结果；副本模式仅约束原生路径，
 2. **外部结果**：KVClientBackend 通过 Wait 获取逐 key 结果。
 3. **最终结果**：同一 key 至少一端成功即返回成功；两端均未确认成功则返回失败，记录两侧状态。原生失败、外部成功时保留外部对象，不自动回滚删除。
 
-BatchPut 按输入顺序返回各 key 的合并结果；批量部分成功表示不同 key 的结果不同。本方案每个 key 一次提交，不定义单个 key 的部分成功状态。无论合并结果如何，返回前两路均须停止访问源 buffer。
-
 **ASU 数据可见性（按 Store 状态）**
 
 | 外部对象状态 | Load 结果 | 处理规则 |
@@ -301,7 +299,7 @@ BatchPut 按输入顺序返回各 key 的合并结果；批量部分成功表示
 
 **force 与读租约**
 
-Query 获取副本信息时，Master 通过 `GrantLease` 授予短期读租约（`lease_timeout`）。`force` 仅控制原生路径的租约检查。
+Query 获取副本信息时，Master 通过 `GrantLease` 授予短期读租约（`lease_timeout`）。`force` 仅控制原生路径的租约检查。因为外部存储没有接入Mooncake Master 的这套租约，想要拿到该key是否在租约内要等待原生删除行为完成，才能根据原生删除结果决定是否删除外部存储，与当前架构不符。
 
 | force | 原生删除行为 | 外部删除行为 |
 | --- | --- | --- |
@@ -321,11 +319,6 @@ Query 获取副本信息时，Master 通过 `GrantLease` 授予短期读租约�
 | 超时 / 结果不确定 | 任意 | 返回原生错误或结果不确定，保留逐侧状态 |
 | 已删 / 明确 NotFound | 失败 / 结果不确定 | 返回删除失败/部分失败，不报完整成功 |
 
-**在途访问与重试**
-
-外部读删并发的内存访问安全由存储端保证；`force=true` 不代表允许回收仍被在途操作访问的资源。超时与退出时的任务收敛要求见第 5 节。
-
-重试必须避免迟到删除作用于新对象；在对象代际/幂等契约确定前，不提供跨重建的盲重试。
 
 ## 4. Client 不支持/仅原生接口清单
 
