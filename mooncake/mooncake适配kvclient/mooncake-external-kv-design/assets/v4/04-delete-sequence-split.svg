@@ -41,9 +41,9 @@
 <polyline points="980.9075889960986,834.9975503708495 970,840 980.9075889960986,845.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="970,860 1035,860 1035,892 970,892" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="980.9075889960986,886.9975503708495 970,892 980.9075889960986,897.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
-<text x="1050" y="878.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">7. 以 TaskId 构造 OperationHandle</text>
-<text x="1050" y="901.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">保存 SDK 上下文与批量下标</text>
-<text x="770.0" y="961.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">8a. OperationHandle</text>
+<text x="1050" y="878.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">7. 保存 TaskId 对象</text>
+<text x="1050" y="901.4" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="start" fill="#28705f">返回其地址（void*）</text>
+<text x="770.0" y="961.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">8a. void*：TaskId 对象地址</text>
 <polyline points="970,975 570,975" fill="none" stroke="#28705f" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="580.9075889960986,969.9975503708495 570,975 580.9075889960986,980.0024496291505" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="430,1005 1580,1005" fill="none" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
@@ -73,11 +73,11 @@
 <polyline points="1830,1630 570,1630" fill="none" stroke="#93651f" stroke-width="2" stroke-dasharray="9 7"/>
 <polyline points="580.9075889960986,1624.9975503708495 570,1630 580.9075889960986,1635.0024496291505" fill="none" stroke="#93651f" stroke-width="2"/>
 <polyline points="430,1750 1580,1750 1580,2240 430,2240 430,1750" fill="none" stroke="#657583" stroke-width="2" stroke-dasharray="9 7"/>
-<text x="442" y="1778.0" font-family="Microsoft YaHei, sans-serif" font-size="19" text-anchor="start" fill="#657583">opt  已获得 OperationHandle：原生拒绝 / 失败也必须执行 Wait</text>
-<text x="770.0" y="1816.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">11. OperationHandle::Wait()</text>
+<text x="442" y="1778.0" font-family="Microsoft YaHei, sans-serif" font-size="19" text-anchor="start" fill="#657583">opt  已获得任务指针：通过基类 Wait；原生拒绝 / 失败也须等待外部</text>
+<text x="770.0" y="1816.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">11. Wait(task, timeout_ms)</text>
 <polyline points="570,1830 970,1830" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="959.0924110039014,1835.0024496291505 970,1830 959.0924110039014,1824.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
-<text x="1170.0" y="1886.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">12. Wait(TaskId, timeout)</text>
+<text x="1170.0" y="1886.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">12. Wait(taskId, timeoutMs, result)</text>
 <polyline points="970,1900 1370,1900" fill="none" stroke="#28705f" stroke-width="2"/>
 <polyline points="1359.0924110039014,1905.0024496291505 1370,1900 1359.0924110039014,1894.9975503708495" fill="none" stroke="#28705f" stroke-width="2"/>
 <text x="1170.0" y="1956.0" font-family="Microsoft YaHei, sans-serif" font-size="18" text-anchor="middle" fill="#28705f">13. 任务结果 / 超时</text>

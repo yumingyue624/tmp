@@ -33,28 +33,24 @@ class StorageBuffer {
     virtual BufferInfo GetInfo() const = 0;
 };
 
-class OperationHandle {
- public:
-    virtual ~OperationHandle() = default;
-    virtual bool IsReady() const = 0;
-    virtual std::vector<tl::expected<void, ErrorCode>> Wait() = 0;
-};
-
 class ExternalStoreBackend {
  public:
     virtual ~ExternalStoreBackend() = default;
 
-    virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> Put(
+    virtual tl::expected<void*, ErrorCode> Put(
         const ObjectKey& key, const std::vector<Slice>& slices) = 0;
 
-    virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> BatchPut(
+    virtual tl::expected<void*, ErrorCode> BatchPut(
         const std::vector<ObjectKey>& keys,
         const std::vector<std::vector<Slice>>& batched_slices) = 0;
-    virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> Remove(
+    virtual tl::expected<void*, ErrorCode> Remove(
         const ObjectKey& key) = 0;
 
-    virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> BatchRemove(
+    virtual tl::expected<void*, ErrorCode> BatchRemove(
         const std::vector<ObjectKey>& keys) = 0;
+
+    virtual std::vector<tl::expected<void, ErrorCode>> Wait(
+        void* task, std::uint64_t timeout_ms) = 0;
 
     virtual tl::expected<void, ErrorCode> RegisterRegions(
         const std::vector<MemoryRegion>& regions,

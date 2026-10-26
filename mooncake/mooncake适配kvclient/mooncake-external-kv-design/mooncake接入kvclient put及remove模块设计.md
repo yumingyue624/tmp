@@ -39,51 +39,76 @@ class ExternalStoreBackend {
 public:
     virtual ~ExternalStoreBackend() = default;
 
-    virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> Put(
+    virtual tl::expected<void*, ErrorCode> Put(
         const ObjectKey& key, const std::vector<Slice>& slices) = 0;
 
-    virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> BatchPut(
+    virtual tl::expected<void*, ErrorCode> BatchPut(
         const std::vector<ObjectKey>& keys,
         const std::vector<std::vector<Slice>>& batched_slices) = 0;
 
-    virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> Remove(
+    virtual tl::expected<void*, ErrorCode> Remove(
         const ObjectKey& key) = 0;
 
-    virtual tl::expected<std::unique_ptr<OperationHandle>, ErrorCode> BatchRemove(
+    virtual tl::expected<void*, ErrorCode> BatchRemove(
         const std::vector<ObjectKey>& keys) = 0;
 
+    virtual std::vector<tl::expected<void, ErrorCode>> Wait(
+        void* task, std::uint64_t timeout_ms) = 0;
+
 };
 ```
 
-对象操作返回 OperationHandle，KVClientBackend 异步完成，其他 backend 可以同步完成。
+对象操作返回 `tl::expected<void*, ErrorCode>`：错误表示提交失败，指针表示具体 backend 的任务数据。Client 根据配置创建具体 backend，写入、删除及等待均通过 ExternalStoreBackend 调用，不依赖 SDK 类型。
+
+**通用 Wait 契约**
+
+| 项目 | 定义 |
+| --- | --- |
+| task | 提交接口返回的任务指针，仅交给创建它的 backend；Client 不转换或释放 |
+| timeout_ms | 等待预算，单位毫秒；超时后安全收敛可能需要额外时间，不代表整个函数的返回上限 |
+| 返回结果 | 逐 key 的成功或 ErrorCode，数量和顺序与提交输入一致；单对象返回一项 |
+| 生命周期 | backend 持有任务及相关资源，Wait 完成结果处理并安全收敛后回收任务；同一指针仅调用一次 Wait |
+| 返回条件 | 任务不再访问调用方 buffer；超时不能仅移除任务记录后返回 |
+
+**KVClientBackend 适配**
 
 ```cpp
-class OperationHandle {
+class KVClientBackend : public ExternalStoreBackend {
 public:
-    virtual ~OperationHandle() = default;
+    std::vector<tl::expected<void, ErrorCode>> Wait(
+        void* task, std::uint64_t timeout_ms) override;
 };
 ```
 
-**KVClient 派生句柄**
-
-KVClientBackend 定义 `KVClientOperationHandle`，继承 OperationHandle，封装 SDK TaskId
+KVClientBackend 返回其管理的 `kv::TaskId` 对象地址；Wait 内部转换指针，调用 SDK，并将 SDK 调用状态及 TaskResult 逐项状态转换为 Mooncake 结果：
 
 ```cpp
-class KVClientOperationHandle final : public OperationHandle {
-public:
-    bool IsReady() const override;
-    std::vector<tl::expected<void, ErrorCode>> Wait() override;
-
-private:
-    std::shared_ptr<kv::KvClient> sdk_;
-    kv::TaskId task_id_;
-    uint64_t timeout_ms_;
-    std::vector<tl::expected<void, ErrorCode>> results_;
-};
+auto task_id = *static_cast<kv::TaskId*>(task);
+kv::TaskResult result;
+auto status = sdk_->Wait(task_id, timeout_ms, result);
 ```
+
+TaskId 对象由 KVClientBackend 管理，等待及结果处理完成前保持地址有效；不得返回局部变量地址或将整数 TaskId 强转成指针。任务安全收敛后由 backend 回收该对象，调用方不自行释放。SDK 的 `kv::TaskResult` 用于接收结果，再逐 key 转换为 Mooncake 结果。
+
+其他 backend 在 Wait 内对接各自完成机制；同步 backend 可返回保存了已完成结果的任务指针，Wait 立即取回结果。公共流程只调用 `backend_->Wait(task, timeout_ms)`。
 
 ### 2.2 KvclientBackend 实现
-#### 2.2.1 key处理
+
+#### 2.2.1 配置说明与使用范围
+
+配置选择 KVClientBackend 时，须在配置项注释及使用说明中注明以下限制：
+
+> KVClientBackend 适用于直接传入已注册源 buffer 的写入路径，不支持先复制到 Mooncake 内部 buffer 再写入的中转场景，包括 RealClient::put、put_batch、put_parts 及启用 stage_nonlocal 的写入路径。需要此类内存中转时，使用 Mooncake FileStorage。
+
+| 路径 | KVClientBackend 支持范围 |
+| --- | --- |
+| put_from、batch_put_from、batch_put_from_multi_buffers 等 | 源 buffer 已就绪、已注册，且无需内部中转时支持 |
+| put、put_batch、put_parts 等 | 不支持；这些入口先分配 Mooncake 内部 buffer 并复制数据 |
+| stage_nonlocal=true | 不支持中转路径；空 stager 的重载委托不受此限制 |
+
+KVClientBackend 的接入目标是直接复用调用方源 buffer。内部中转增加复制和内存管理成本，此类需求使用已有 FileStorage 路径。
+
+#### 2.2.2 key处理
 
 1）Mooncake key格式
 
@@ -158,7 +183,7 @@ KVBuffer {
 | offset | 固定填充 0。同一 key 下前面所有 slice 长度之和，需要 512 位对齐，由于 mooncake 的 key 已经携带了 layer、tp 等信息，所以可直接填充 0。 |
 | deviceId | PointerInfo.device_id |
 | numaNode | 无需填充 |
-| memoryType | 根据接口传入的内存决定，例如RealClient::put_from接口填DEVICE，RealClient::put接口填HOST |
+| memoryType | 根据实际源内存类型填写 HOST 或 DEVICE；不通过入口名称推断，不支持 RealClient::put 等内部中转路径 |
 | buffer.handle / mrKey | handle 由注册时拿到，mrKey 由 KvClient 填充 |
 
 ## 3. 关键流程
@@ -184,9 +209,9 @@ KVBuffer {
 </tr>
 </thead>
 <tbody>
-<tr><td><code>Client::Put(key, slices, config)</code></td><td>是</td><td>外部 Put 提交 → 原生 Put → Wait 外部结果</td><td>key + <code>std::vector&lt;Slice&gt;</code></td><td>PutStart 分配副本，传输，PutEnd 提交</td><td><code>RealClient::put</code>、<code>put_from</code>、<code>put_parts</code> 等最终走这里</td></tr>
-<tr><td><code>Client::BatchPut(keys, batched_slices, config)</code></td><td>是</td><td>委托带 stager 的重载，由共同实现完成双写，避免重复提交</td><td>多 key + 每个 key 的 slices</td><td>批量分配、传输、提交</td><td><code>RealClient::put_batch</code>、<code>batch_put_from</code>、<code>batch_put_from_multi_buffers</code></td></tr>
-<tr><td><code>Client::BatchPut(keys, batched_slices, config, WriteBufferStager)</code></td><td>是</td><td>外部 BatchPut 提交 → 原生批量写 → Wait；外部源须可访问且已注册，不能直接假定原生 staging buffer 可用</td><td>同上 + stager</td><td>非本地 buffer 可先 staged 到内部 buffer</td><td>源 buffer 不能被 TransferEngine 直接 DMA；RealClient 的 <code>stage_nonlocal=true</code> 路径</td></tr>
+<tr><td><code>Client::Put(key, slices, config)</code></td><td>是</td><td>外部 Put 提交 → 原生 Put → Wait；仅支持无需内部中转的源 buffer</td><td>key + <code>std::vector&lt;Slice&gt;</code></td><td>PutStart 分配副本，传输，PutEnd 提交</td><td><code>RealClient::put_from</code>；put、put_parts 虽调用此接口，但不在 KVClientBackend 支持范围内</td></tr>
+<tr><td><code>Client::BatchPut(keys, batched_slices, config)</code></td><td>是</td><td>以空 stager 委托共同实现；仅支持无需内部中转的源 buffer</td><td>多 key + 每个 key 的 slices</td><td>批量分配、传输、提交</td><td><code>RealClient::batch_put_from</code>、<code>batch_put_from_multi_buffers</code>；不支持 put_batch 中转入口</td></tr>
+<tr><td><code>Client::BatchPut(keys, batched_slices, config, WriteBufferStager)</code></td><td>否</td><td>不支持启用 stager 的中转场景；空 stager 委托按普通 BatchPut 处理</td><td>同上 + stager</td><td>非本地 buffer 可先 staged 到内部 buffer</td><td>RealClient 的 <code>stage_nonlocal=true</code> 路径</td></tr>
 <tr><td><code>Client::Upsert / BatchUpsert</code></td><td>是</td><td>外部 Put / BatchPut 提交 → 原生 Upsert / BatchUpsert → Wait；KVClient Store 支持同 key 覆盖写，不因 key 已存在报错</td><td>key(s) + slices</td><td>存在则更新，不存在则插入</td><td>upsert 系列</td></tr>
 <tr><td><code>Client::TransferWriteRange(replica, slices, dst_offset)</code></td><td>否</td><td>范围传输，在Client层无key，上层RealClient有key但语义不合适</td><td>已缓存的副本描述 + slices + 目标偏移</td><td>往已有 memory replica 的指定区间写</td><td>Put session 的分段写</td></tr>
 <tr><td><code>Client::BatchTransferWriteRanges(...)</code></td><td>否</td><td>范围传输，在Client层无key，上层RealClient有key但语义不合适</td><td>多副本 + 多 slices + 多偏移</td><td>批量区间写</td><td>Put session 批量分段写</td></tr>
@@ -315,6 +340,7 @@ Query 获取副本信息时，Master 通过 `GrantLease` 授予短期读租约�
 
 | 入口 | 本期处理 | 原因 / 条件 |
 | --- | --- | --- |
+| put / put_batch / put_parts 及启用 stage_nonlocal 的写入变体 | KVClientBackend 不支持；配置说明明确标注 | 先复制到 Mooncake 内部 buffer 的中转场景使用 FileStorage，见 2.2.1 |
 | get_buffer / batch_get_buffer | 仅原生，不加外部 fallback | 不新增由 Store 分配 payload 的路径；原生 miss 不代表外部不存在 |
 | getSize / get_size | 长度来源未落实前不接外部 | lookup 命中位不能替代长度；不得返回伪造的 0 |
 | get_into_ranges、batch_get_into_multi_buffer_ranges | 待读侧扩展，当前外部返回不支持 | 需精确范围、目标偏移、对齐和边界验证 |
