@@ -40,17 +40,17 @@ public:
     virtual ~ExternalStoreBackend() = default;
 
     virtual tl::expected<void*, ErrorCode> Put(
-        const ObjectKey& key, const std::vector<Slice>& slices) = 0;
+        const std::string& tenant, const ObjectKey& key, const std::vector<Slice>& slices) = 0;
 
     virtual tl::expected<void*, ErrorCode> BatchPut(
-        const std::vector<ObjectKey>& keys,
+        const std::string& tenant, const std::vector<ObjectKey>& keys,
         const std::vector<std::vector<Slice>>& batched_slices) = 0;
 
     virtual tl::expected<void*, ErrorCode> Remove(
-        const ObjectKey& key) = 0;
+        const std::string& tenant, const ObjectKey& key) = 0;
 
     virtual tl::expected<void*, ErrorCode> BatchRemove(
-        const std::vector<ObjectKey>& keys) = 0;
+        const std::string& tenant, const std::vector<ObjectKey>& keys) = 0;
 
     virtual std::vector<tl::expected<void, ErrorCode>> Wait(
         void* task, std::uint64_t timeout_ms) = 0;
@@ -59,6 +59,8 @@ public:
 ```
 
 对象操作返回 `tl::expected<void*, ErrorCode>`：错误表示提交失败，指针表示具体 backend 的任务数据。Client 根据配置创建具体 backend，写入、删除及等待均通过 ExternalStoreBackend 调用，不依赖 SDK 类型。
+
+Client 传入 tenant 和原始 key，不预先拼接。Backend 内部统一处理命名空间与 key 编码；同一批次的 key 共用一个 tenant，写入与删除使用相同的映射规则。
 
 **通用 Wait 契约**
 

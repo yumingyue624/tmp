@@ -38,16 +38,16 @@ class ExternalStoreBackend {
     virtual ~ExternalStoreBackend() = default;
 
     virtual tl::expected<void*, ErrorCode> Put(
-        const ObjectKey& key, const std::vector<Slice>& slices) = 0;
+        const std::string& tenant, const ObjectKey& key, const std::vector<Slice>& slices) = 0;
 
     virtual tl::expected<void*, ErrorCode> BatchPut(
-        const std::vector<ObjectKey>& keys,
+        const std::string& tenant, const std::vector<ObjectKey>& keys,
         const std::vector<std::vector<Slice>>& batched_slices) = 0;
     virtual tl::expected<void*, ErrorCode> Remove(
-        const ObjectKey& key) = 0;
+        const std::string& tenant, const ObjectKey& key) = 0;
 
     virtual tl::expected<void*, ErrorCode> BatchRemove(
-        const std::vector<ObjectKey>& keys) = 0;
+        const std::string& tenant, const std::vector<ObjectKey>& keys) = 0;
 
     virtual std::vector<tl::expected<void, ErrorCode>> Wait(
         void* task, std::uint64_t timeout_ms) = 0;
